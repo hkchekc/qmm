@@ -9,7 +9,7 @@ struct PARAM{
 	const double beta=0.993362, gamma=3.0;
 	const double a_min=-3.0, a_max=24.0;
 	const double net_agg_asset=0.0;
-	const double vf_crit=1e-6, dist_crit=1e-8, q_crit=1e-3;
+	const double vf_crit=1e-6, dist_crit=1e-7, q_crit=1e-3;
 	const unsigned NA=1000, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
@@ -34,5 +34,5 @@ void bellman(RESULT &r, PARAM &p);
 void populat_a_change_mat(RESULT &r, PARAM &p);
 void find_stat_dist(RESULT &r, PARAM &p);
 void q_error(RESULT &r, PARAM &p);
-void write_all(RESULT r);
+void write_all(RESULT r, PARAM p);
 #endif
