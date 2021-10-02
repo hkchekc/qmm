@@ -150,3 +150,55 @@ void bellman(RESULT &r, PARAM &p){
 	cout << r.vf_err  << endl;
 	cout << "====================================\n";
 }
+
+void populat_a_change_mat(RESULT &r, PARAM &p){
+	int choice, current_state, next_state;
+
+	r.a_change_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
+	for (int aidx=0; aidx<p.NA;aidx++){
+		for (int zidx=0; zidx<p.NZ;zidx++){
+			current_state = zidx*p.NA+aidx;
+			choice = r.pfunc(aidx, zidx);
+			for (int nzidx=0; nzidx< p.NZ; nzidx++){
+				next_state = nzidx*p.NA + choice;
+				r.a_change_mat(current_state, next_state) += p.markov(zidx, nzidx); 
+			}
+		}
+	}
+}
+
+void find_stat_dist(RESULT &r, PARAM &p){
+	double uniform  = 1/(double)p.NA/(double)p.NZ;
+
+	VectorXd abs_diff(p.NA*p.NZ);
+	VectorXd new_stat_dist(p.NA*p.NZ);
+	r.stat_dist = VectorXd::Constant(p.NA*p.NZ, uniform);
+	r.dist_err = 100;
+	for (int i=0; i<1000; i++){
+		r.stat_dist = r.a_change_mat * r.stat_dist;
+	}
+	while (r.dist_err > p.dist_crit){
+		new_stat_dist = r.a_change_mat * r.stat_dist;
+		abs_diff = new_stat_dist - r.stat_dist;
+		r.dist_err = abs_diff.cwiseAbs().maxCoeff();
+		r.stat_dist = new_stat_dist;
+		cout << r.dist_err << "\n";
+	}
+}
+
+void q_error(RESULT &r, PARAM &p){
+	double net_asset;
+	net_asset = 0;
+	for (int aidx=0; aidx < p.NA; aidx++){
+		for (int zidx=0; zidx< p.NZ; zidx++){
+			net_asset += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
+		}
+	}
+	if (net_asset > 0.){
+		r.high_q =r.q;
+	}else {
+		r.low_q = r.q;
+	}
+	r.q_err = abs(r.high_q - r.low_q);
+	r.q = (r.high_q+r.low_q)/2;
+}
