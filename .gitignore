@@ -11,6 +11,11 @@
 *.pdf
 *.lyx
 *.tex
+data_output/*
+*.png
+
+# exec
+build/
 
 # Session
 Session.vim
