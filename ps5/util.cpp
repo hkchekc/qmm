@@ -202,3 +202,16 @@ void q_error(RESULT &r, PARAM &p){
 	r.q_err = abs(r.high_q - r.low_q);
 	r.q = (r.high_q+r.low_q)/2;
 }
+
+void write_all (RESULT r){
+	const int len = 2;
+	string fname[len] = {"vf.txt", "consum.txt"};
+	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr};
+	for (int i=0;i <len; i++){
+	ofstream fs;
+	fs.open(fname[i]);
+	if (fs.is_open()){
+		fs << *pmat[i];
+	}
+	fs.close();
+}}
