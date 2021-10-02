@@ -16,6 +16,11 @@ for arr in arr_li:
 
 ngraph = len(arr_li) -1  # a grid is x axis
 
+# adjust policy function
+for i in range(f_dict['pfunc'].shape[0]):
+    for j in range(f_dict['pfunc'].shape[1]):
+        f_dict['pfunc'][i,j] = f_dict['a_grid'][int(f_dict['pfunc'][i,j])]
+
 for idx, it in enumerate(arr_li):
     if it=='a_grid':
         continue
@@ -24,7 +29,7 @@ for idx, it in enumerate(arr_li):
     plt.plot(f_dict['a_grid'], f_dict[it])
 
 # problem set 1 specific
-norm_grid = np.linspace(-3, 24, 1000)
+norm_grid = np.linspace(-3, 24, len(f_dict['a_grid']))
 fig = plt.figure(100)
 fig.canvas.set_window_title("log space grid")
 plt.plot(norm_grid, f_dict['a_grid'])

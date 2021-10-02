@@ -114,6 +114,7 @@ void init_params(PARAM &p){
     		   0.0252,    0.9497,    0.0252,
     		   0.0000,    0.0298,    0.9702;
 	p.states = {0.9598, 1., 1.0419};
+	// p.states = {0.7598, 1., 1.7419};
  	double steps = log(p.a_max-p.a_min + 1.)/(float)p.NA;
  	for (int i=0; i<p.NA; ++i){
  		p.a_grid[i] = exp(steps*i)-1.+p.a_min;
@@ -123,13 +124,13 @@ void init_params(PARAM &p){
 void bellman(RESULT &r, PARAM &p){
 	double consum, util, cond_util, cu, nu;
 	MatrixXd abs_diff(p.NA, p.NZ);
-
+	double interest = 1./r.q; // for performance
 // 	#pragma omp parallel for 
 	for ( int aidx=0; aidx<p.NA; ++aidx){
 		for (int zidx=0; zidx<p.NZ; ++zidx){
 			cond_util = -1e10;
 			for (int choice=0; choice<p.NA; ++choice){
-				consum = p.states[zidx] + p.a_grid[aidx] - r.q * p.a_grid[choice];
+				consum = p.states[zidx] +interest*p.a_grid[aidx] - p.a_grid[choice];
 				if (consum > 0.){
 					// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
 					cu = -.5/consum/consum; // more efficient
@@ -165,6 +166,14 @@ void populat_a_change_mat(RESULT &r, PARAM &p){
 			}
 		}
 	}
+//  	float sum_row;
+//  	for (int i = 0; i < p.NA*p.NZ; ++i) {
+//  		sum_row = r.a_change_mat.row(i).sum();
+//  		for (int j = 0; j < p.NA*p.NZ; ++j) {
+//  		 	r.a_change_mat(i,j) /= sum_row;
+//  		}
+//  	}
+// 
 }
 
 void find_stat_dist(RESULT &r, PARAM &p){
@@ -172,7 +181,7 @@ void find_stat_dist(RESULT &r, PARAM &p){
 
 	VectorXd abs_diff(p.NA*p.NZ);
 	VectorXd new_stat_dist(p.NA*p.NZ);
-	r.stat_dist = VectorXd::Constant(p.NA*p.NZ, uniform);
+	r.stat_dist.fill( uniform);
 	r.dist_err = 100;
 	// for (int i=0; i<1000; ++i){
 	//	r.stat_dist = r.a_change_mat * r.stat_dist;
@@ -195,13 +204,16 @@ void q_error(RESULT &r, PARAM &p){
 			net_asset += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
-	if (net_asset > 0.){
-		r.high_q =r.q;
+	if (net_asset < 0.){
+		r.high_q = r.q;
 	}else {
 		r.low_q = r.q;
 	}
-	r.q_err = abs(r.high_q - r.low_q);
+	// r.q_err = abs(r.high_q - r.low_q);
+	r.q_err = abs(net_asset);
 	r.q = (r.high_q+r.low_q)/2;
+	cout << net_asset << "net_asset" << "\n";
+	cout << "high:" << r.high_q << "low:" << r.low_q << "\n";
 }
 
 void write_all (RESULT r, PARAM p){

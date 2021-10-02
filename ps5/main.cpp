@@ -15,6 +15,8 @@ int main() {
 	chrono::steady_clock::time_point tot_begin = chrono::steady_clock::now();
  	while (r.q_err > p.q_crit){
  		r.vf_err = 100;
+		r.new_vf = MatrixXd::Zero(p.NA, p.NZ);
+		r.vf = MatrixXd::Zero(p.NA, p.NZ);
 		chrono::steady_clock::time_point begin = chrono::steady_clock::now();
  		while( r.vf_err > p.vf_crit){
  			bellman(r, p);
@@ -26,13 +28,13 @@ int main() {
  		find_stat_dist(r, p);
 		cout << "done with stat" << "\n"; 
  		q_error(r, p);
-		cout << r.q_err << "\n"; 
+		cout << r.q << " q \n";
 		chrono::steady_clock::time_point end = chrono::steady_clock::now();
 		cout << "Time difference = " << chrono::duration_cast<chrono::seconds>(end - begin).count() << "[s]" << endl;
  	}
  	write_all(r, p);
 	chrono::steady_clock::time_point tot_end = chrono::steady_clock::now();
 	cout << "Time difference = " << chrono::duration_cast<chrono::seconds>(tot_end - tot_begin).count() << "[s]" << endl;
-	cout << r.q;
+	cout << r.q << "final q" << endl;
 	return 0;
 }

@@ -19,7 +19,7 @@ struct PARAM{
 
 struct RESULT {
 	PARAM param;
-	double high_q=1, low_q=0.97, q=0.99;
+	double high_q=2, low_q=0, q=1;
 	MatrixXd vf= MatrixXd(param.NA, param.NZ), new_vf= MatrixXd(param.NA, param.NZ), consum_arr = MatrixXd(param.NA, param.NZ);
 	Eigen::VectorXd stat_dist = Eigen::VectorXd(param.NA*param.NZ);
 	MatrixXd a_change_mat= MatrixXd(param.NA*param.NZ,param.NA*param.NZ);
