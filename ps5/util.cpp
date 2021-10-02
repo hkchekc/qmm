@@ -101,3 +101,52 @@ MatrixXd th_matlab(string file,const unsigned n){
 			f >> m(i,j);}}
 	return m;
 }
+
+void init_params(PARAM &p){
+	MatrixXd tmp(p.NZ, p.NZ+1);
+	tmp = tauchenhussey(p.NZ, p.mu, p.rho, p.sigma);
+ 	for (int i =0; i<p.NZ; i++){
+ 		p.states[i] = tmp(i, p.NZ);
+ 		p.states[i] = exp(p.states[i]);
+ 	}
+ 	p.markov = tmp.block(0,0,p.NZ,p.NZ);
+	p.markov << 0.9702,    0.0298,    0.0000,
+    		   0.0252,    0.9497,    0.0252,
+    		   0.0000,    0.0298,    0.9702;
+	p.states = {0.9598, 1., 1.0419};
+ 	double steps = log(p.a_max-p.a_min + 1.)/(float)p.NA;
+ 	for (int i=0; i<p.NA;i++){
+ 		p.a_grid[i] = exp(steps*i)-1.+p.a_min;
+ 	}
+}
+
+void bellman(RESULT &r, PARAM &p){
+	double consum, util, cond_util, cu, nu;
+	MatrixXd abs_diff(p.NA, p.NZ);
+
+	for ( int aidx=0; aidx<p.NA;aidx++){
+		for (int zidx=0; zidx<p.NZ;zidx++){
+			cond_util = -1e10;
+			for (int choice=0; choice<p.NA; choice++){
+				consum = p.states[zidx] + p.a_grid[aidx] - r.q * p.a_grid[choice];
+				if (consum > 0.){
+					cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
+					nu = p.markov.row(zidx).transpose().dot(r.vf.row(choice)); // next utility
+					util = cu+ p.beta*nu;
+					if (util > cond_util){
+						r.new_vf(aidx, zidx) = util;
+						r.pfunc(aidx, zidx) = choice;
+						cond_util = util;
+						r.consum_arr(aidx, zidx) = consum;
+					}
+				}
+			}
+		}
+	}
+	abs_diff = r.new_vf - r.vf;
+	// abs_diff = abs_diff.cwiseAbs();
+	r.vf_err = max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
+	r.vf = r.new_vf;
+	cout << r.vf_err  << endl;
+	cout << "====================================\n";
+}
