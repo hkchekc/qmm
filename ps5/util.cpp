@@ -125,14 +125,14 @@ void bellman(RESULT &r, PARAM &p){
 	double consum, util, cond_util, cu, nu, this_wealth, this_a;
 	MatrixXd abs_diff(p.NA, p.NZ);
 	double interest = 1./r.q; // for performance
-	MatrixXd next_util_arr(p.NA, 1);
+	MatrixXd next_util_arr(p.NA, p.NZ);
 
-	next_util_arr = r.vf*p.markov; // not sure if in general show I transpose
+	next_util_arr = r.vf*p.markov.transpose(); // not sure if in general show I transpose
 	# pragma omp parallel for
-	for ( int aidx=0; (unsigned)aidx<p.NA; ++aidx){
+	for (int aidx=0; (unsigned)aidx<p.NA; ++aidx){
 		this_a = interest*p.a_grid[aidx];
 		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){
-			cond_util = -100.;
+			cond_util = -1000.;
 			this_wealth = p.states[zidx] +this_a;
 			// this_wealth = p.states[zidx] +interest*p.a_grid[aidx];
 			for (int choice=0; (unsigned)choice<p.NA; ++choice){
@@ -143,7 +143,7 @@ void bellman(RESULT &r, PARAM &p){
 				consum = this_wealth- p.a_grid[choice];
 				cu = .5/(consum*consum); // more efficient by putting the negative sign only when calc tot util
 				// nu = p.markov.row(zidx).dot(r.vf.row(choice)); // next utility
-				nu = next_util_arr(choice);
+				nu = next_util_arr(choice, zidx);
 				util = p.beta*nu- cu;
 				if (util < cond_util){
 					continue;
