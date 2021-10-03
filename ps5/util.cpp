@@ -129,13 +129,13 @@ void bellman(RESULT &r, PARAM &p){
 
 	next_util_arr = r.vf*p.markov.transpose(); // not sure if in general show I transpose
 	# pragma omp parallel for
-	for (int aidx=0; (unsigned)aidx<p.NA; ++aidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
 		this_a = interest*p.a_grid[aidx];
-		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){
-			cond_util = -1000.;
+		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+			cond_util = -100.;
 			this_wealth = p.states[zidx] +this_a;
 			// this_wealth = p.states[zidx] +interest*p.a_grid[aidx];
-			for (int choice=0; (unsigned)choice<p.NA; ++choice){
+			for (size_t choice=0; choice<p.NA; ++choice){
 				if (this_wealth <p.a_grid[choice]) {
 					break; // if this choice is over current state wealth, all later a' are over
 				}
@@ -163,7 +163,7 @@ void bellman(RESULT &r, PARAM &p){
 	r.vf = r.new_vf;
 }
 
-void par_bellman(RESULT &r, PARAM &p){
+void par_bellman(RESULT &r, PARAM &p){ // useless now
 	double consum, util, cu, nu, this_wealth;
 	MatrixXd abs_diff(p.NA, p.NZ);
 	vector<double> util_arr, this_con_arr;
@@ -203,11 +203,11 @@ void populat_a_change_mat(RESULT &r, PARAM &p){
 	int choice, current_state, next_state;
 	cout << "====================================\n";
 	r.a_change_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
-	for (int aidx=0; (unsigned)aidx<p.NA; ++aidx){
-		for (int zidx=0;  (unsigned)zidx<p.NZ; ++zidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		for (size_t zidx=0; zidx<p.NZ; ++zidx){
 			current_state = zidx*p.NA+aidx;
 			choice = r.pfunc(aidx, zidx);
-			for (int nzidx=0;  (unsigned)nzidx< p.NZ; ++nzidx){
+			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
 				next_state = nzidx*p.NA + choice;
 				r.a_change_mat(current_state, next_state) += p.markov(zidx, nzidx); 
 			}
@@ -245,8 +245,8 @@ void find_stat_dist(RESULT &r, PARAM &p){
 void q_error(RESULT &r, PARAM &p){
 	double net_asset;
 	net_asset = 0;
-	for (int aidx=0;  (unsigned)aidx < p.NA; ++aidx){
-		for (int zidx=0; (unsigned)zidx< p.NZ; ++zidx){
+	for (size_t aidx=0; aidx < p.NA; ++aidx){
+		for (size_t zidx=0; zidx< p.NZ; ++zidx){
 			net_asset += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
