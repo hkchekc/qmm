@@ -45,9 +45,9 @@ float normal_pdf(float x, float m, float s)
 		}else{ 
 			z = 2*z - x_arr[i-1];
  		}
- 		for (int j=0; j<maxit; ++j){
+ 		for (int j=0; (unsigned)j<maxit; ++j){
  			double p1=pim4, p2=0.0, p3=0.0;
- 			for (int k=0; k<n; ++k){
+ 			for (int k=0; (unsigned)k<n; ++k){
  				p3 = p2;
  				p2 = p1;
  				p1 = z*sqrt(2/(k+1))*p2 - sqrt(k/(k+1))*p3;
@@ -64,28 +64,28 @@ float normal_pdf(float x, float m, float s)
  	reverse(x_arr.begin(), x_arr.end());
  	// end of gauss hermite
  	// gauss normal
- 	for (int i=0; i<n; ++i){
+ 	for (int i=0; (unsigned)i<n; ++i){
  		x_arr[i] = x_arr[i]*baseSigma*M_SQRT2 + mu;
  		w_arr[i] /= sqrt(M_PI);
  		}
  	// end gauss normal
  	// Calculate transition probabilities
  	double ezPrime;
- 	for (int i = 0; i < n; ++i) {
- 		for (int j = 0; j < n; ++j) {
+ 	for (int i = 0; (unsigned)i < n; ++i) {
+ 		for (int j = 0; (unsigned)j < n; ++j) {
  			ezPrime = (1-rho)*mu + rho*x_arr[i];
  			m(i,j) = w_arr[j] * normal_pdf(x_arr[j], ezPrime, sigma)/normal_pdf(x_arr[j], mu, baseSigma);
  		}
  	}
  	//normalize probabilities
  	float sum_row;
- 	for (int i = 0; i < n; ++i) {
+ 	for (int i = 0; (unsigned)i < n; ++i) {
  		sum_row = m.row(i).sum();
- 		for (int j = 0; j < n; ++j) {
+ 		for (int j = 0; (unsigned)j < n; ++j) {
  		 	m(i,j) /= sum_row;
  		}
  	}
- 	for (int i=0; i<n ; ++i) {
+ 	for (int i=0; (unsigned)i<n ; ++i) {
  		m(i,n) = x_arr[i];
  	}
 	return m;
@@ -96,8 +96,8 @@ MatrixXd th_matlab(string file,const unsigned n){
 	ifstream f;
 	f.open(file);
 	MatrixXd m(n,n+1);
-	for(int i=0; i<n; ++i){
-		for(int j=0;j<n+1; ++j){
+	for(int i=0; (unsigned)i<n; ++i){
+		for(int j=0; (unsigned)j<n+1; ++j){
 			f >> m(i,j);}}
 	return m;
 }
@@ -116,34 +116,45 @@ void init_params(PARAM &p){
 	p.states = {0.9598, 1., 1.0419};
 	// p.states = {0.7598, 1., 1.7419};
  	double steps = log(p.a_max-p.a_min + 1.)/(float)p.NA;
- 	for (int i=0; i<p.NA; ++i){
+ 	for (int i=0; (unsigned)i<p.NA; ++i){
  		p.a_grid[i] = exp(steps*i)-1.+p.a_min;
  	}
 }
 
 void bellman(RESULT &r, PARAM &p){
-	double consum, util, cond_util, cu, nu;
+	double consum, util, cond_util, cu, nu, this_wealth, this_a;
 	MatrixXd abs_diff(p.NA, p.NZ);
 	double interest = 1./r.q; // for performance
-// 	#pragma omp parallel for 
-	for ( int aidx=0; aidx<p.NA; ++aidx){
-		for (int zidx=0; zidx<p.NZ; ++zidx){
-			cond_util = -1e10;
-			for (int choice=0; choice<p.NA; ++choice){
-				consum = p.states[zidx] +interest*p.a_grid[aidx] - p.a_grid[choice];
-				if (consum > 0.){
-					// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
-					cu = -.5/consum/consum; // more efficient
-					nu = p.markov.row(zidx).transpose().dot(r.vf.row(choice)); // next utility
-					util = cu+ p.beta*nu;
-					if (util > cond_util){
-						r.new_vf(aidx, zidx) = util;
-						r.pfunc(aidx, zidx) = choice;
-						cond_util = util;
-						r.consum_arr(aidx, zidx) = consum;
-					}
+	MatrixXd next_util_arr(p.NA, 1);
+
+	next_util_arr = r.vf*p.markov; // not sure if in general show I transpose
+	
+	for ( int aidx=0; (unsigned)aidx<p.NA; ++aidx){
+		this_a = interest*p.a_grid[aidx];
+		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){
+			cond_util = -100.;
+			this_wealth = p.states[zidx] +this_a;
+			// this_wealth = p.states[zidx] +interest*p.a_grid[aidx];
+			for (int choice=0; (unsigned)choice<p.NA; ++choice){
+				if (this_wealth <p.a_grid[choice]) {
+					break; // if this choice is over current state wealth, all later a' are over
 				}
+				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
+				consum = this_wealth- p.a_grid[choice];
+				cu = .5/(consum*consum); // more efficient by putting the negative sign only when calc tot util
+				// nu = p.markov.row(zidx).dot(r.vf.row(choice)); // next utility
+				nu = next_util_arr(choice);
+				util = p.beta*nu- cu;
+				if (util < cond_util){
+					continue;
+				}
+				r.new_vf(aidx, zidx) = util;
+				r.pfunc(aidx, zidx) = choice;
+				cond_util = util;
+				r.consum_arr(aidx, zidx) = consum;
+				
 			}
+
 		}
 	}
 	abs_diff = r.new_vf - r.vf;
@@ -152,15 +163,51 @@ void bellman(RESULT &r, PARAM &p){
 	r.vf = r.new_vf;
 }
 
+void par_bellman(RESULT &r, PARAM &p){
+	double consum, util, cu, nu, this_wealth;
+	MatrixXd abs_diff(p.NA, p.NZ);
+	vector<double> util_arr, this_con_arr;
+	vector<double>::iterator this_max_ele;
+	unsigned this_max;
+	double interest = 1./r.q; // for performance
+	for ( int aidx=0; (unsigned)aidx<p.NA; ++aidx){
+		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){
+			this_wealth = p.states[zidx] +interest*p.a_grid[aidx];
+			util_arr.assign(p.NA, -100);
+			this_con_arr.clear();
+			this_con_arr.resize(p.NA);
+			#pragma omp parallel for
+			for (int choice=0; (unsigned)choice<p.NA; ++choice){
+				if (this_wealth >p.a_grid[choice]) {
+					consum = this_wealth- p.a_grid[choice];
+					cu = -.5/consum/consum; // more efficient
+					nu = p.markov.row(zidx).transpose().dot(r.vf.row(choice)); // next utility
+					util = cu+ p.beta*nu;
+					util_arr[choice] = util;
+					this_con_arr[choice] = consum;
+				}
+			}
+			this_max_ele = max_element(util_arr.begin(), util_arr.end());
+			this_max = distance(util_arr.begin(), this_max_ele);
+			r.new_vf(aidx, zidx) = *this_max_ele;
+			r.pfunc(aidx, zidx) = this_max;
+			r.consum_arr(aidx,zidx) = this_con_arr[this_max];
+
+		}
+	}
+	abs_diff = r.new_vf - r.vf;
+	r.vf_err = max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
+	r.vf = r.new_vf;
+}
 void populat_a_change_mat(RESULT &r, PARAM &p){
 	int choice, current_state, next_state;
 	cout << "====================================\n";
 	r.a_change_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
-	for (int aidx=0; aidx<p.NA; ++aidx){
-		for (int zidx=0; zidx<p.NZ; ++zidx){
+	for (int aidx=0; (unsigned)aidx<p.NA; ++aidx){
+		for (int zidx=0;  (unsigned)zidx<p.NZ; ++zidx){
 			current_state = zidx*p.NA+aidx;
 			choice = r.pfunc(aidx, zidx);
-			for (int nzidx=0; nzidx< p.NZ; ++nzidx){
+			for (int nzidx=0;  (unsigned)nzidx< p.NZ; ++nzidx){
 				next_state = nzidx*p.NA + choice;
 				r.a_change_mat(current_state, next_state) += p.markov(zidx, nzidx); 
 			}
@@ -192,15 +239,14 @@ void find_stat_dist(RESULT &r, PARAM &p){
 		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
 		// r.dist_err = abs_diff.cwiseAbs().maxCoeff();
 		r.stat_dist = new_stat_dist;
-		cout << r.dist_err << "\n";
 	}
 }
 
 void q_error(RESULT &r, PARAM &p){
 	double net_asset;
 	net_asset = 0;
-	for (int aidx=0; aidx < p.NA; ++aidx){
-		for (int zidx=0; zidx< p.NZ; ++zidx){
+	for (int aidx=0;  (unsigned)aidx < p.NA; ++aidx){
+		for (int zidx=0; (unsigned)zidx< p.NZ; ++zidx){
 			net_asset += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
@@ -213,7 +259,6 @@ void q_error(RESULT &r, PARAM &p){
 	r.q_err = abs(net_asset);
 	r.q = (r.high_q+r.low_q)/2;
 	cout << net_asset << "net_asset" << "\n";
-	cout << "high:" << r.high_q << "low:" << r.low_q << "\n";
 }
 
 void write_all (RESULT r, PARAM p){

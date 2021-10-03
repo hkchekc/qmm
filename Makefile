@@ -23,4 +23,4 @@ $(ODIR)/%.o: $(SRCDIR)/%.cpp $(INC)
 clean: 
 	rm -f *.o $(ODIR)/*
 	$(TARDIR)/$(SRCDIR)_main
-	rm -f $(TARDIR)/*
+#	rm -f $(TARDIR)/*

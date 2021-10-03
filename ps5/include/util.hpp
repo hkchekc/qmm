@@ -19,7 +19,7 @@ struct PARAM{
 
 struct RESULT {
 	PARAM param;
-	double high_q=2, low_q=0, q=1;
+	double high_q=3, low_q=0, q=1.5;
 	MatrixXd vf= MatrixXd(param.NA, param.NZ), new_vf= MatrixXd(param.NA, param.NZ), consum_arr = MatrixXd(param.NA, param.NZ);
 	Eigen::VectorXd stat_dist = Eigen::VectorXd(param.NA*param.NZ);
 	MatrixXd a_change_mat= MatrixXd(param.NA*param.NZ,param.NA*param.NZ);
@@ -31,6 +31,7 @@ MatrixXd tauchenhussey(unsigned n,double mu,double  rho,double sigma);
 MatrixXd th_matlab(std::string file,const unsigned n);
 void init_params(PARAM &p);
 void bellman(RESULT &r, PARAM &p);
+void par_bellman(RESULT &r, PARAM &p);
 void populat_a_change_mat(RESULT &r, PARAM &p);
 void find_stat_dist(RESULT &r, PARAM &p);
 void q_error(RESULT &r, PARAM &p);
