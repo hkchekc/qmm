@@ -128,7 +128,7 @@ void bellman(RESULT &r, PARAM &p){
 	MatrixXd next_util_arr(p.NA, 1);
 
 	next_util_arr = r.vf*p.markov; // not sure if in general show I transpose
-	
+	# pragma omp parallel for
 	for ( int aidx=0; (unsigned)aidx<p.NA; ++aidx){
 		this_a = interest*p.a_grid[aidx];
 		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){

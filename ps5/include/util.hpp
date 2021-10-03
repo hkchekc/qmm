@@ -31,7 +31,7 @@ MatrixXd tauchenhussey(unsigned n,double mu,double  rho,double sigma);
 MatrixXd th_matlab(std::string file,const unsigned n);
 void init_params(PARAM &p);
 void bellman(RESULT &r, PARAM &p);
-void par_bellman(RESULT &r, PARAM &p);
+void par_bellman(RESULT &r, PARAM &p); // current useless
 void populat_a_change_mat(RESULT &r, PARAM &p);
 void find_stat_dist(RESULT &r, PARAM &p);
 void q_error(RESULT &r, PARAM &p);
