@@ -8,7 +8,7 @@
 #include "include/util.hpp"
 
 using namespace std;
-using Eigen::MatrixXd, Eigen::MatrixXi, Eigen::VectorXd;
+using Eigen::MatrixXd, Eigen::MatrixXi;
 
 float normal_pdf(float x, float m, float s)
 {
@@ -111,10 +111,10 @@ void init_params(PARAM &p){
 // 	}
 // 	p.markov = tmp.block(0,0,p.NZ,p.NZ);
 	p.markov << 0.9702,    0.0298,    0.0000,
-    		   0.0252,    0.9497,    0.0252,
+    		   0.0254,    0.9493,    0.0254,
     		   0.0000,    0.0298,    0.9702;
-	p.states = {0.9598, 1., 1.0419};
-	// p.states = {0.7598, 1., 1.7419};
+	p.states = {0.7155, 1., 1.3977};
+	// p.states = {0.0598, 1., 5.7419};
  	double steps = log(p.a_max-p.a_min + 1.)/(float)p.NA;
  	for (int i=0; (unsigned)i<p.NA; ++i){
  		p.a_grid[i] = exp(steps*i)-1.+p.a_min;
@@ -173,7 +173,7 @@ void par_bellman(RESULT &r, PARAM &p){ // useless now
 	for ( int aidx=0; (unsigned)aidx<p.NA; ++aidx){
 		for (int zidx=0; (unsigned) zidx<p.NZ; ++zidx){
 			this_wealth = p.states[zidx] +interest*p.a_grid[aidx];
-			util_arr.assign(p.NA, -100);
+			util_arr.assign(p.NA, -1000);
 			this_con_arr.clear();
 			this_con_arr.resize(p.NA);
 			#pragma omp parallel for
@@ -209,28 +209,29 @@ void populat_a_change_mat(RESULT &r, PARAM &p){
 			choice = r.pfunc(aidx, zidx);
 			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
 				next_state = nzidx*p.NA + choice;
-				r.a_change_mat(current_state, next_state) += p.markov(zidx, nzidx); 
+				r.a_change_mat(next_state, current_state) += p.markov(zidx, nzidx); 
 			}
 		}
 	}
-//  	float sum_row;
-//  	for (int i = 0; i < p.NA*p.NZ; ++i) {
-//  		sum_row = r.a_change_mat.row(i).sum();
-//  		for (int j = 0; j < p.NA*p.NZ; ++j) {
-//  		 	r.a_change_mat(i,j) /= sum_row;
-//  		}
-//  	}
-// 
+// not sure but I think the eigenvector should be the same with or without normalizing
+  	float sum_row;
+  	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
+  		sum_row = r.a_change_mat.col(i).sum();
+  		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
+  		 	r.a_change_mat(j,i) /= sum_row;
+  		}
+  	}
+ 
 }
 
 void find_stat_dist(RESULT &r, PARAM &p){
 	double uniform  = 1/(double)p.NA/(double)p.NZ;
 
-	VectorXd abs_diff(p.NA*p.NZ);
-	VectorXd new_stat_dist(p.NA*p.NZ);
+	MatrixXd abs_diff(p.NA*p.NZ, 1);
+	MatrixXd new_stat_dist(p.NA*p.NZ,1);
 	r.stat_dist.fill( uniform);
 	r.dist_err = 100;
-	// for (int i=0; i<1000; ++i){
+	// for (int i=0; i<100; ++i){
 	//	r.stat_dist = r.a_change_mat * r.stat_dist;
 	// }
 	while (r.dist_err > p.dist_crit){
@@ -239,6 +240,7 @@ void find_stat_dist(RESULT &r, PARAM &p){
 		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
 		// r.dist_err = abs_diff.cwiseAbs().maxCoeff();
 		r.stat_dist = new_stat_dist;
+		// cout << r.dist_err << "\n";
 	}
 }
 

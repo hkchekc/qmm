@@ -19,9 +19,9 @@ struct PARAM{
 
 struct RESULT {
 	PARAM param;
-	double high_q=3, low_q=0, q=1.5;
+	double high_q=3, low_q=0.5, q=1.5;
 	MatrixXd vf= MatrixXd(param.NA, param.NZ), new_vf= MatrixXd(param.NA, param.NZ), consum_arr = MatrixXd(param.NA, param.NZ);
-	Eigen::VectorXd stat_dist = Eigen::VectorXd(param.NA*param.NZ);
+	Eigen::MatrixXd stat_dist = Eigen::MatrixXd(param.NA*param.NZ, 1);
 	MatrixXd a_change_mat= MatrixXd(param.NA*param.NZ,param.NA*param.NZ);
 	Eigen::MatrixXi pfunc= Eigen::MatrixXi(param.NA, param.NZ);
 	double vf_err=100, dist_err=100, q_err=100; // need reset vor while ausser q.
