@@ -11,7 +11,7 @@
 *.pdf
 *.lyx
 *.tex
-data_output/*
+*data_output/*
 *.png
 
 # exec
