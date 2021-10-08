@@ -32,7 +32,7 @@ int main() {
 		chrono::steady_clock::time_point end = chrono::steady_clock::now();
 		cout << "Time difference = " << chrono::duration_cast<chrono::seconds>(end - begin).count() << "[s]" << endl;
  	}
- 	write_all(r, p);
+ 	write_all(r, p, "hugget");
 	chrono::steady_clock::time_point tot_end = chrono::steady_clock::now();
 	cout << "Time difference = " << chrono::duration_cast<chrono::seconds>(tot_end - tot_begin).count() << "[s]" << endl;
 	cout << r.q << "final q" << endl;

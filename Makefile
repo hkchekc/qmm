@@ -1,7 +1,7 @@
 _OBJ=util.o main.o
 CC=g++-8
-CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. 
-SRCDIR=ps5
+CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I.
+SRCDIR=hugget
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))
 _INC=
