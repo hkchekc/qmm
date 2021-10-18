@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <iostream>
-#include "include/util.hpp"
 #include <Eigen/Dense>
 #include <chrono>
+#include "include/hugget.hpp"
 
 using namespace std;
 using Eigen::MatrixXd;

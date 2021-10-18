@@ -129,8 +129,8 @@ for tidx in range(life_time-2, -1, -1):
                     next_value[aidx, zidx] += markov[zidx, last_zidx] * this_val  # error-prone
 
 
-np.savetxt("data_output/consumption_policy.csv", exo_consum_arr[:,:,24], delimiter=",")
-np.savetxt("data_output/coh.csv", exo_working_cash_on_hand[:,:,24], delimiter=",")
+np.savetxt("data_output/consumption_policy.csv", exo_consum_arr[:,:,work_time], delimiter=",")
+np.savetxt("data_output/coh.csv", exo_working_cash_on_hand[:,:,work_time], delimiter=",")
 
 # simulation
 @jit(nopython=True, parallel=True)
