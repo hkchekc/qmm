@@ -1,8 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
 
-dir = "ps5"
+# usage: python3 plot.py directory_intended
+dir = sys.argv[1]
+
 
 # don't have to change
 data_dir = "data_output"

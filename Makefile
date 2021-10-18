@@ -1,13 +1,13 @@
-_OBJ=util.o main.o
 CC=g++-8
-CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. 
-SRCDIR=ps5
+CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. -I/usr/local/include
+SRCDIR=life_cycle
+_OBJ=$(SRCDIR).o main.o
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))
 _INC=
 IDIR=include
 INC=$(patsubst %,$(SRCDIR)/$(IDIR)/%,$(_INC))
-LIBS=-lm
+LIBS=-lm -L/usr/local/lib -lgsl
 TARDIR=build
 
 .PHONY: clean

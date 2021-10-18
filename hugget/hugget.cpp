@@ -5,7 +5,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <fstream>
-#include "include/util.hpp"
+#include "include/hugget.hpp"
 
 using namespace std;
 using Eigen::MatrixXd, Eigen::MatrixXi;
@@ -263,9 +263,9 @@ void q_error(RESULT &r, PARAM &p){
 	cout << net_asset << "net_asset" << "\n";
 }
 
-void write_all (RESULT r, PARAM p){
+void write_all (RESULT r, PARAM p,string dir){
 	const int len = 2;
-	string path ="ps5/data_output/";
+	string path =dir+"/data_output/";
 	string fname[len] = {"vf.txt", "consum.txt"};
 	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr};
 	ofstream fs;
@@ -276,14 +276,14 @@ void write_all (RESULT r, PARAM p){
 		}
 		fs.close();
 	}
-	fs.open(path+"a_grid.txt");
+	fs.open(path+"a_grid.txt"); //vector
 	if (fs.is_open()){
-		for (auto &ele: p.a_grid){
+		for (auto &ele: p.a_grid){ 
 			fs << ele << endl;
 		}
 	}
 	fs.close();
-	fs.open(path+"pfunc.txt");
+	fs.open(path+"pfunc.txt"); // eigen matrix
 	if (fs.is_open()){
 		fs << r.pfunc;
 	}

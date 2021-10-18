@@ -1,9 +1,12 @@
 #include <Eigen/Dense>
 #include <vector>
-using namespace std;
+#include <iostream>
+#include <stdio.h>
 using Eigen::MatrixXd;
-#ifndef UTIL_H
-#define UTIL_H
+using std::vector;
+
+#ifndef HUGGET_H
+#define HUGGET_H
 
 struct PARAM{
 	const double beta=0.993362, gamma=3.0;
@@ -26,14 +29,14 @@ struct RESULT {
 	Eigen::MatrixXi pfunc= Eigen::MatrixXi(param.NA, param.NZ);
 	double vf_err=100, dist_err=100, q_err=100; // need reset vor while ausser q.
 };
+
 float normal_pdf(float x, float m, float s);
-MatrixXd tauchenhussey(unsigned n,double mu,double  rho,double sigma);
-MatrixXd th_matlab(std::string file,const unsigned n);
+MatrixXd tauchenhussey(const unsigned n,double mu,double  rho,double sigma);
 void init_params(PARAM &p);
 void bellman(RESULT &r, PARAM &p);
 void par_bellman(RESULT &r, PARAM &p); // currently useless
 void populat_a_change_mat(RESULT &r, PARAM &p);
 void find_stat_dist(RESULT &r, PARAM &p);
 void q_error(RESULT &r, PARAM &p);
-void write_all(RESULT r, PARAM p);
+void write_all (RESULT r, PARAM p, std::string dir);
 #endif
