@@ -145,7 +145,7 @@ def map_to_nearest_grid(income_grids, income_processes):
 
 rho_arr = np.linspace(.7,.995, 10)
 
-rho = .99
+rho = .97
 # for rho in rho_arr:
 rng = np.random.default_rng(seed=1000)
 init_income = 1
@@ -163,12 +163,12 @@ income_process = np.ones((NHOUSE, life_time))  # initial period is one, don't ch
 perm_shock_mat = np.zeros((NHOUSE, life_time))
 this_total_income = income_process[:, 0]
 for tidx in range(1, work_time):
-    this_income = rho*this_total_income  # no profile as it will be part of the policy as tidx
+    this_income = rho*np.log(this_total_income)# no profile as it will be part of the policy as tidx
     this_shock = rng.normal(perm_shock_mean, perm_shock_se, NHOUSE)
     perm_shock_mat[:, tidx] = this_shock
     tmp_shock = rng.choice([1, trans_shock], NHOUSE,  p=[1-trans_shock_prob, trans_shock_prob])
-    this_total_income = this_income+this_shock
-    this_total_income[this_total_income<0] = 0
+    this_total_income = np.exp(this_income+this_shock)
+    # this_total_income[this_total_income< 0] = 1
     income_process[:, tidx] = tmp_shock* this_total_income
 income_process[:, work_time:] = pension_income
 
