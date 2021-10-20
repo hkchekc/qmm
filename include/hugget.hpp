@@ -30,8 +30,8 @@ struct RESULT {
 	double vf_err=100, dist_err=100, q_err=100; // need reset vor while ausser q.
 };
 
-float normal_pdf(float x, float m, float s);
-MatrixXd tauchenhussey(const unsigned n,double mu,double  rho,double sigma);
+// float normal_pdf(float x, float m, float s);
+// MatrixXd tauchenhussey(const unsigned n,double mu,double  rho,double sigma);
 void init_params(PARAM &p);
 void bellman(RESULT &r, PARAM &p);
 void par_bellman(RESULT &r, PARAM &p); // currently useless
