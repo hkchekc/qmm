@@ -1,6 +1,6 @@
 CC=g++-8
 CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. -I/usr/local/include
-SRCDIR=life_cycle
+SRCDIR=hugget
 _OBJ=$(SRCDIR).o main.o
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))

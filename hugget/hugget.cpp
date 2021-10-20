@@ -17,20 +17,22 @@ float normal_pdf(float x, float m, float s)
     return inv_sqrt_2pi / s * exp(-0.5f * a * a);
 }
 
- MatrixXd tauchenhussey(const unsigned n,double mu,double  rho,double sigma){
+ MatrixXd tauchenhussey(const unsigned n,double mu,double  rho,double sigma_sq){
 	//     Adapted from Martin Floden, Stockholm School of Economics
 	//     January 2007 (updated August 2007)
 	//
 	//     This procedure is an implementation of Tauchen and Hussey's
 	//     algorithm, Econometrica (1991, Vol. 59(2), pp. 371-396)
-	double baseSigma = (.5+rho/4)*sigma+(.5-rho/4)*sigma/sqrt(1.0-pow(rho, 2.0));
+	const double sigma = sqrt(sigma_sq);
+	const double baseSigma = (.5+rho/4)*sigma+(.5-rho/4)*sigma/sqrt(1.0-(rho*rho));		
+	const double base_sigma_2 = baseSigma*baseSigma;
 	MatrixXd m(n, n+1);
 	// create grids
 	// gauss hermite nodes and weights
- 	unsigned maxit = 10;
- 	static double pim4 = .7511255444649425, crit = 3e-14;
+ 	const unsigned maxit = 10;
+ 	const double pim4 = .7511255444649425, crit = 3e-14;
  	vector<double> x_arr(n), w_arr(n);
- 	int len = static_cast<int>(floor(n+1)/2);
+ 	int len = static_cast<int>(floor((n+1)/2));
  	double z;
  	for (int i=0; i<len; ++i){
  		double pp=0;
@@ -45,21 +47,27 @@ float normal_pdf(float x, float m, float s)
 		}else{ 
 			z = 2*z - x_arr[i-1];
  		}
- 		for (int j=0; (unsigned)j<maxit; ++j){
- 			double p1=pim4, p2=0.0, p3=0.0;
- 			for (int k=0; (unsigned)k<n; ++k){
+		double z1, p3, p1, p2;
+ 		for (size_t j=0; j<maxit; ++j){
+ 			p1=pim4, p2=0.0;
+ 			for (size_t k=0; k<n; ++k){
  				p3 = p2;
  				p2 = p1;
- 				p1 = z*sqrt(2/(k+1))*p2 - sqrt(k/(k+1))*p3;
+ 				p1 = z*sqrt(2./(k+1))*p2 - sqrt((float)k/(k+1))*p3;
  			}
  			pp = sqrt(2.0*n)*p2;
- 			double z1 = z;
+ 			z1 = z;
  			z = z1 - p1/pp;
- 			if (abs(z-z1) < crit){ break;}}
+
+ 			if (abs(z-z1) < crit){ 
+				 break;
+				 }
+			}
  		x_arr[i] = z;
  		x_arr[n-i-1] = -z;
  		w_arr[i] = 2./pp/pp;
  		w_arr[n-i-1] = w_arr[i];
+
  	}
  	reverse(x_arr.begin(), x_arr.end());
  	// end of gauss hermite
@@ -78,7 +86,7 @@ float normal_pdf(float x, float m, float s)
  		}
  	}
  	//normalize probabilities
- 	float sum_row;
+	float sum_row;
  	for (int i = 0; (unsigned)i < n; ++i) {
  		sum_row = m.row(i).sum();
  		for (int j = 0; (unsigned)j < n; ++j) {
@@ -103,17 +111,20 @@ MatrixXd th_matlab(string file,const unsigned n){
 }
 
 void init_params(PARAM &p){
-//	MatrixXd tmp(p.NZ, p.NZ+1);
-//	tmp = tauchenhussey(p.NZ, p.mu, p.rho, p.sigma);
-// 	for (int i =0; i<p.NZ; ++i){
-// 		p.states[i] = tmp(i, p.NZ);
-// 		p.states[i] = exp(p.states[i]);
-// 	}
-// 	p.markov = tmp.block(0,0,p.NZ,p.NZ);
-	p.markov << 0.9702,    0.0298,    0.0000,
-    		   0.0254,    0.9493,    0.0254,
-    		   0.0000,    0.0298,    0.9702;
-	p.states = {0.7155, 1., 1.3977};
+	MatrixXd tmp(p.NZ, p.NZ+1);
+	tmp = tauchenhussey(p.NZ, p.mu, p.rho, p.sigma);
+	for (int i =0; i<p.NZ; ++i){
+		p.states[i] = tmp(i, p.NZ);
+		p.states[i] = exp(p.states[i]);
+		cout << p.states[i] << " states \n";
+	}
+	p.markov = tmp.block(0,0,p.NZ,p.NZ);
+	// p.markov << 0.9702,    0.0298,    0.0000,
+    // 		   0.0254,    0.9493,    0.0254,
+    // 		   0.0000,    0.0298,    0.9702;
+	cout << p.markov << "\n"; 
+
+	// p.states = {0.7155, 1., 1.3977};
 	// p.states = {0.0598, 1., 5.7419};
  	double steps = log(p.a_max-p.a_min + 1.)/(float)p.NA;
  	for (int i=0; (unsigned)i<p.NA; ++i){
