@@ -17,7 +17,7 @@ life_time = work_time+retire_time
 discount_arr = np.ones(life_time)
 survive_reudction = (1-last_surv_rate)/retire_time
 for t in range(work_time, life_time):
-    discount_arr[t] = discount_arr[t-1]- survive_reudction
+    discount_arr[t] = discount_arr[t-1] - survive_reudction
 discount_arr *= beta
 gamma = 1.5
 inv_gamma = 1/gamma
@@ -63,16 +63,17 @@ next_value = np.zeros((NA, NZ))
 pension_income = profile[work_time-1]*pension_rate
 
 # Populate last period
+# precalculate retired cash on hand, as there is no time dependent element
+exo_pension_cash_on_hand = interest*tmr_a_grid+pension_income
 for aidx in range(NA):
     # I just define the init coh as correct grid
-    implied_consum_arr[aidx, :] = interest*tmr_a_grid[aidx]+pension_income
+    implied_consum_arr[aidx, :] = exo_pension_cash_on_hand[aidx] + 0.01
     exo_consum_arr[aidx, :, life_time-1] = implied_consum_arr[aidx, :]
     next_value[aidx, :] = interest/(exo_consum_arr[aidx, 0, life_time-1]**gamma)
 
-# precalculate retired cash on hand, as there is no time dependent element
-exo_pension_cash_on_hand = interest*tmr_a_grid+pension_income
+
 # leave it out and calc in loop
-exo_working_cash_on_hand = np.zeros((NA,NZ,life_time))
+exo_working_cash_on_hand = np.zeros((NA, NZ,work_time))
 
 # Backward induction
 for tidx in range(life_time-2, -1, -1):
@@ -81,7 +82,7 @@ for tidx in range(life_time-2, -1, -1):
             implied_consum_arr[aidx, :] = 1/((discount_arr[tidx+1]*next_value[aidx, 0])**inv_gamma)
             if implied_consum_arr[aidx, 0] < 0.00001:
                 print(implied_consum_arr[aidx, 0], next_value[aidx, 0], tidx)
-                raise OSError
+                raise ValueError
             implied_cash_on_hand[aidx, :, tidx] = implied_consum_arr[aidx, :]+tmr_a_grid[aidx]
         greatest_constrainted_cash_on_hand[tidx] = implied_cash_on_hand[0, 0, tidx]
         # first populate the first state and copy it to other state just for completeness
@@ -105,7 +106,7 @@ for tidx in range(life_time-2, -1, -1):
                 implied_consum_arr[aidx, zidx] = 1 / ((discount_arr[tidx + 1] * next_value[aidx, zidx]) ** inv_gamma)
                 if implied_consum_arr[aidx, zidx] < 0.00001:
                     print(implied_consum_arr[aidx, zidx], next_value[aidx, zidx], tidx)
-                    raise OSError
+                    raise ValueError
                 implied_cash_on_hand[aidx, zidx, tidx] = implied_consum_arr[aidx, zidx] + tmr_a_grid[aidx]
             # see where it binds
             greatest_constrainted_cash_on_hand[tidx] = implied_cash_on_hand[0, zidx, tidx]
@@ -113,13 +114,13 @@ for tidx in range(life_time-2, -1, -1):
             # exo_consum_arr[:, zidx, tidx] = np.interp(exo_working_cash_on_hand[:, zidx, tidx],
             #                                        implied_cash_on_hand[:, zidx, tidx], implied_consum_arr[:, zidx])
             interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, zidx, tidx], implied_consum_arr[:, zidx],
-                                                 fill_value="extrapolate")
+                                                 fill_value="extrapolate", kind="linear")
             exo_consum_arr[:, zidx, tidx] = interpolate_f(exo_working_cash_on_hand[:, zidx, tidx])
             # Make sure no negative consumption or over asset constraint
             mx = np.ma.masked_less_equal(exo_working_cash_on_hand[:, zidx, tidx], greatest_constrainted_cash_on_hand[tidx]).mask
             exo_consum_arr[:, zidx, tidx][mx] = exo_working_cash_on_hand[:, zidx, tidx][mx]
         # not using next period value after getting this.consumption, therefore I can flush it here.
-        next_value[:,:] = 0
+        next_value = np.zeros((NA, NZ))
         tmp_consum = exo_consum_arr[:, :, tidx]
         # tmp_consum[tmp_consum <= 0] = 0.0000000001
         for last_zidx in range(NZ):
@@ -130,7 +131,7 @@ for tidx in range(life_time-2, -1, -1):
 
 
 np.savetxt("data_output/consumption_policy.csv", exo_consum_arr[:,:,work_time], delimiter=",")
-np.savetxt("data_output/coh.csv", exo_working_cash_on_hand[:,:,work_time], delimiter=",")
+np.savetxt("data_output/coh.csv", exo_working_cash_on_hand[:,:,work_time-1], delimiter=",")
 
 # simulation
 @jit(nopython=True, parallel=True)
@@ -147,7 +148,7 @@ rho_arr = np.linspace(.7,.995, 10)
 
 rho = .97
 # for rho in rho_arr:
-rng = np.random.default_rng(seed=1000)
+rng = np.random.default_rng(seed=10000)
 init_income = 1
 NHOUSE = 5000
 init_cap_mean = -2.5
@@ -158,7 +159,7 @@ initial_capital[initial_capital > init_cap_cap] = init_cap_cap
 
 # worktime income process
 perm_shock_mean = 0.
-perm_shock_se = 0.015
+perm_shock_se = math.sqrt(0.015)
 income_process = np.ones((NHOUSE, life_time))  # initial period is one, don't change
 perm_shock_mat = np.zeros((NHOUSE, life_time))
 this_total_income = income_process[:, 0]
@@ -173,7 +174,7 @@ for tidx in range(1, work_time):
 income_process[:, work_time:] = pension_income
 
 for tidx in range(1, work_time):
-    income_process[:, tidx] *= profile[tidx]
+    income_process[1:, tidx] *= profile[tidx]
 
 # survival_mat = np.ones((NHOUSE, tidx))
 # for house in range(NHOUSE):
@@ -186,17 +187,23 @@ approx_income_idx = map_to_nearest_grid(states, income_process)
 life_time_wealth_matrix = np.cumsum(income_process, axis=1)  # but I use real income process
 for i in range(NHOUSE):
     life_time_wealth_matrix[i, :] += initial_capital[i]
-simu_cash_on_hand = life_time_wealth_matrix[:,:]
+simu_cash_on_hand = life_time_wealth_matrix[:, :]
 simu_consum = np.zeros((NHOUSE, life_time))
 simu_asset = np.zeros((NHOUSE, life_time))
 simu_asset[:, 0] = initial_capital
 
-#  too much trouble to deal with the not surviving household
+death_rate = discount_arr/beta
 for tidx in range(life_time):
     for house in range(NHOUSE):
+        # if tidx >= work_time:
+        #     death = rng.choice([True, False],1, p=[death_rate[tidx], 1 - death_rate[tidx]])
+        #     if death:
+        #         simu_asset[house, tidx:] = 0
+        #         simu_consum[house, tidx:] = 0
+        #         break
         this_cash_on_hand = interest*simu_asset[house, tidx] + income_process[house, tidx]
         state = approx_income_idx[house, tidx]
-        if tidx >= work_time:
+        if tidx < work_time:
             exo_cash_on_hand = exo_working_cash_on_hand[:, state, tidx]
         else:
             exo_cash_on_hand = exo_pension_cash_on_hand
@@ -213,7 +220,7 @@ for tidx in range(life_time):
             continue  # no asset holding in last period
         simu_asset[house, tidx+1] = this_cash_on_hand - simu_consum[house, tidx]
 
-        if simu_consum[house, tidx]<=0:
+        if simu_consum[house, tidx] <= 0:
             print(house, tidx, state, this_cash_on_hand, simu_consum[house, tidx])
             simu_consum[house, tidx] = 0.001  # force things to work
 
@@ -248,7 +255,7 @@ print("consum growth: {}, income growth: {}".format(log_consum_growth, log_incom
 # insurance
 consum_lag = np.diff(simu_consum, axis=1)
 covar_income_shock = Series(np.mean(consum_lag, axis=0)).cov(Series(np.mean(perm_shock_mat[:, 1:], axis=0)))
-print("phi is",1-covar_income_shock/(perm_shock_se**2))
+print("phi is", 1-covar_income_shock/(perm_shock_se**2))
 
 plt.show()
 
