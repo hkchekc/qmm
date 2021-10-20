@@ -159,7 +159,7 @@ initial_capital[initial_capital > init_cap_cap] = init_cap_cap
 
 # worktime income process
 perm_shock_mean = 0.
-perm_shock_se = 0.015
+perm_shock_se = math.sqrt(0.015)
 income_process = np.ones((NHOUSE, life_time))  # initial period is one, don't change
 perm_shock_mat = np.zeros((NHOUSE, life_time))
 this_total_income = income_process[:, 0]
