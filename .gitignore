@@ -7,11 +7,16 @@
 [._]ss[a-gi-z]
 [._]sw[a-p]
 
+# IDEs
+.idea/
+.vscode/
+
 # writeups
 *.pdf
 *.lyx
 *.tex
-*data_output/*
+*/data_output/*
+*/input/*
 *.png
 
 # exec
