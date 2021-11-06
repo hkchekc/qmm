@@ -85,7 +85,7 @@ bequest_params = np.array([0.4, 0.38, 2.22])  # preliminary bequest parameters, 
 new_bequest_params = np.zeros(3)
 bequest_err = 100
 bequest_time = work_time
-crit = 1e-3  # loop through the gmm of parametric distribution
+crit = 5e-2  # loop through the gmm of parametric distribution
 
 # start with last period
 pension_income = profile[-1] * pension_rate
@@ -94,7 +94,7 @@ exo_pension_cash_on_hand = interest * tmr_a_grid + pension_income
 
 # simulation parameters
 rho = .97
-rng = Generator(MT19937(seed=1234))
+rng = Generator(MT19937(1234))
 init_income = 1
 NHOUSE = 2000
 
@@ -121,19 +121,6 @@ for tidx in range(1, work_time):
     income_process[:, tidx] = tmp_shock * this_total_income * profile[tidx]
 income_process[:, work_time:] = pension_income
 print(income_process[:1])
-# for tidx in range(1, work_time):
-#     income_process[1:, tidx] *= profile[tidx]
-
-# simu - precalculate survival for house hold
-# construct probability of dying
-# tmp_arr = 1. - discount_arr[work_time:]
-# tmp_prob_arr = np.zeros(retire_time + 1)
-# tmp_prob_arr[0] = tmp_arr[0]
-# for tidx in range(1, retire_time):
-#     tmp_prob_arr[tidx] = np.prod(discount_arr[:work_time + tidx]) * tmp_arr[tidx]
-# tmp_prob_arr[-1] = 1 - sum(tmp_prob_arr)
-# # TODO: check this thing
-# die_time_arr = rng.choice(np.arange(work_time, life_time + 1, 1, dtype=np.int8), size=NHOUSE, p=tmp_prob_arr)
 
 death_mat = rng.uniform(0, 1, (NHOUSE, retire_time)) < discount_arr[work_time:]
 surive_mat = np.cumprod(death_mat, axis=1)
@@ -144,7 +131,7 @@ die_time_arr[die_time_arr == work_time] += 1
 # simu - discretize income
 approx_income_idx = map_to_nearest_grid(states, income_process)
 
-maxit = 10
+maxit = 20
 cit = 1
 
 while bequest_err > crit and maxit > cit:
@@ -171,9 +158,9 @@ while bequest_err > crit and maxit > cit:
     # Populate last period
     for aidx in range(NA):
         # I just define the init coh as correct grid
-        implied_consum_arr[aidx, :, -1] = bequest_implied_consumption(tmr_a_grid[aidx])  # actually a'
-        exo_consum_arr[aidx, :, -1, 0] = implied_consum_arr[aidx, :, -1]
-        implied_cash_on_hand[aidx, :, -1] = interest * tmr_a_grid[aidx] + pension_income
+        implied_consum_arr[aidx+1, :, -1] = bequest_implied_consumption(tmr_a_grid[aidx])  # actually a'
+        exo_consum_arr[aidx, :, -1, 0] = implied_consum_arr[aidx+1, :, -1]
+        implied_cash_on_hand[aidx+1, :, -1] = interest * tmr_a_grid[aidx] + pension_income
         next_value[aidx, :] = interest / (exo_consum_arr[aidx, 0, -1, 0] ** gamma)
 
     # leave it out and calc in loop
@@ -282,11 +269,7 @@ while bequest_err > crit and maxit > cit:
             if die_time_arr[house] == tidx:
                 simu_bequest_sent[house] = net_tax * (simu_asset[house, tidx])
                 break
-            # try:
             this_cash_on_hand += simu_asset[house, tidx] + income_process[house, tidx]
-            # except IndexError:
-            #     print(die_time_arr[house], tidx)
-            #     raise IndexError
 
             if tidx < work_time:  # working people
                 state = approx_income_idx[house, tidx]
@@ -346,7 +329,48 @@ while bequest_err > crit and maxit > cit:
         log_income_growth = np.mean(np.amax(log_income, axis=1) - log_income[:, 0])
 
         avg_asset = np.mean(simu_asset, axis=0) / surv_per_time
+        #
         gini_arr = np.zeros(life_time)
+        wealth_20 = np.zeros(life_time)
+        wealth_5 = np.zeros(life_time)
+        wealth_1 = np.zeros(life_time)
+        for tidx in range(life_time):
+            if tidx >= work_time:
+                this_asset = np.sort(simu_asset[:, tidx][surive_mat[:, tidx-work_time] != 0])
+                len_this_asset = len(this_asset)
+                # avoid outliners ruining the graph, cut out last 20 people
+                this_asset = this_asset[:-5]
+            else:
+                this_asset = np.sort(simu_asset[:, tidx])
+                # avoid outliners ruining the graph, cut out last 20 people
+                this_asset = this_asset[:-5]
+            # this_cumsum = np.cumsum(this_asset)
+            # print(this_cumsum[-10:], "cumsum", len(this_cumsum))
+            # this_degree = np.linspace(0, np.sum(this_asset), NHOUSE)
+            # print(this_degree[-10:], "degree", this_cumsum[-1])
+            # print("================")
+            # this_gini = 0
+            # this_area = ((this_cumsum[-1])**2)/2
+            # for idx in range(1, len(this_asset)):
+            #
+            #     if this_degree[idx] > this_asset[idx]:
+            #         this_gini += 1- this_cumsum[idx]/this_degree[idx]
+            # if this_degree[-1] == 0:
+            #     gini_arr[tidx] = 0
+            #     continue
+            # gini_arr[tidx] = this_gini/len(this_asset)
+            # from wiki
+            this_gini = 0
+            for i in range(len(this_asset)):
+                for j in range(len(this_asset)):
+                    this_gini += abs(this_asset[i]-this_asset[j])
+            gini_arr[tidx] = this_gini/2/NHOUSE/NHOUSE/np.mean(this_asset)
+            # share of wealth held by 20, 5, 1
+            this_sum = np.sum(this_asset)
+            wealth_20[tidx] = np.sum(this_asset[this_asset>=np.quantile(this_asset, 0.8)])/this_sum
+            wealth_5[tidx] = np.sum(this_asset[this_asset>=np.quantile(this_asset, 0.95)])/this_sum
+            wealth_1[tidx] = np.sum(this_asset[this_asset>=np.quantile(this_asset, 0.99)])/this_sum
+
         start_age = 25
         x_val = np.arange(start_age, start_age + life_time, step=1)
         f_dict = {"consumption": avg_consum, "income": avg_income, "asset": avg_asset, "gini": gini_arr}
@@ -354,28 +378,39 @@ while bequest_err > crit and maxit > cit:
             fig = plt.figure(idx)
             fig.canvas.set_window_title(it)
             plt.plot(x_val, f_dict[it])
+            fname = '{}_tax{}_phi{}'.format(it, net_tax, phi1)
+            plt.savefig('data_output/{}.png'.format(fname))
+            plt.title(fname)
 
-        # print("consum growth: {}, income growth: {}".format(log_consum_growth, log_income_growth))
-        # print(exo_consum_arr[:, 0, 39, 0])
-        # plt.plot(exo_working_cash_on_hand[:, 1, 5],exo_consum_arr[:, 1, 5, 0])
-        # plt.plot(exo_working_cash_on_hand[:, 1, 30],exo_consum_arr[:, 1, 30, 0])
-        # plt.plot(exo_pension_cash_on_hand[:,0], exo_consum_arr[:, 0, 50, 0], color='red')
-        # plt.plot(exo_pension_cash_on_hand[:,0], exo_consum_arr[:, 0, 59, 0], color='purple')
-        # plt.plot(exo_pension_cash_on_hand[:,0], exo_consum_arr[:, 0, 69, 0], color='blue')
         plt.figure(idx + 1)
         plt.plot(exo_working_cash_on_hand[:, 2, 39], exo_consum_arr[:, 2, 39, 0], color='red')
         plt.plot(exo_working_cash_on_hand[:, 2, 38], exo_consum_arr[:, 2, 38, 0], color='blue')
         plt.plot(exo_pension_cash_on_hand[:, 0], exo_consum_arr[:, 0, 40, 0], color='orange')
         plt.figure(idx + 2)
         x = np.linspace(simu_bequest_sent.min(), np.quantile(simu_bequest_sent, .98), NHOUSE)
+        # KDE
         kde = stats.gaussian_kde(simu_bequest_sent, bw_method='scott')
         p = kde.pdf(x)
         print(sum(p), "p1")
-        plt.plot(x, p, color="blue")
+        plt.plot(x, p, color="blue", label="sent")
         kde = stats.gaussian_kde(bequest_received)
         p = kde.pdf(x)
         print(sum(p), "p2")
-        plt.plot(x, p, color="red")
-        # plt.show()
+        plt.plot(x, p, color="red", label="received")
+        plt.legend()
+        fname = '{}_tax{}_phi{}'.format("kde", net_tax, phi1)
+        plt.savefig('data_output/{}.png'.format(fname))
+        plt.title(fname)
+
+        # wealth quantile
+        plt.figure(idx + 3)
+        plt.plot(x_val, wealth_20, color="red", label="q=20")
+        plt.plot(x_val, wealth_5, color="blue", label="q=5")
+        plt.plot(x_val, wealth_1, color="orange", label="q=1")
+        plt.legend()
+        fname = '{}_tax{}_phi{}'.format("quantiles", net_tax, phi1)
+        plt.savefig('data_output/{}.png'.format(fname))
+        plt.title(fname)
+
 
 plt.show()
