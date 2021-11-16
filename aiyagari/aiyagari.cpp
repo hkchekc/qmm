@@ -198,7 +198,7 @@ void beta_error(RESULT &r, PARAM p){
 }
 
 void find_beta(RESULT &r, PARAM p){
-    	while (r.beta_err > p.beta_crit){
+    while (r.beta_err > p.beta_crit){
  		r.vf_err = 100;
 		r.new_vf = MatrixXd::Zero(p.NA, p.NZ);
 		r.vf = MatrixXd::Zero(p.NA, p.NZ);
@@ -218,20 +218,189 @@ void find_beta(RESULT &r, PARAM p){
  	}
 }
 
-void calc_gini(RESULT r, ){
-
+void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr){
+	cout << "Calling Quantile \n";
+	double cum_x_dist = 0., old_cumsum_x, old_cum_x_dist;
+	double cumsum_x = 0.;
+	size_t qidx = 0;
+	for (size_t xidx=0; xidx<length; ++xidx){
+		old_cum_x_dist = cum_x_dist;
+		cum_x_dist += x_dist(xidx);
+		old_cumsum_x = cumsum_x;
+		cumsum_x += x_dist(xidx)*sorted_arr(xidx);
+		while (cum_x_dist>=.2){  
+			result_arr(qidx, which_x) = (old_cumsum_x+(.2-old_cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
+			cum_x_dist -= .2;
+			cumsum_x = cum_x_dist*sorted_arr(xidx) ; // not sure if it is correct, is all the residual this index? 
+			qidx += 1;
+			// in case the while loop continues
+			old_cumsum_x = 0;
+			old_cum_x_dist = 0;
+		}
+		// TODO: This part may break things but on the other handcan capture some precision errors
+		// if (xidx == length-1){
+		// 	result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x];
+		// }
+	}
 }
 
-void calc_quantile(RESULT r){
+void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr){
+	// joint is a 2d array, with shape (a_len, y_len)
+	cout << "Calling Quantile \n";
+	double cum_x_dist = 0., old_cumsum_x, old_cum_x_dist;
+	double cumsum_x = 0.;
+	size_t qidx = 0;
+	for (size_t xidx=0; xidx<length; ++xidx){
+		old_cum_x_dist = cum_x_dist;
+		cum_x_dist += x_dist(xidx);
+		old_cumsum_x = cumsum_x;
+		for (auto it: joint_arr.row(xidx)){
+			cumsum_x += x_dist(xidx)*joint_arr(xidx);			
+		}
+		while (cum_x_dist>=.2){  
+			result_arr(qidx, which_x) = (old_cumsum_x+(.2-old_cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
+			cum_x_dist -= .2;
+			cumsum_x = cum_x_dist*sorted_arr(xidx) ; // not sure if it is correct, is all the residual this index? 
+			qidx += 1;
+			// in case the while loop continues
+			old_cumsum_x = 0;
+			old_cum_x_dist = 0;
+		}
+		// TODO: This part may break things but on the other handcan capture some precision errors
+		// if (xidx == length-1){
+		// 	result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x];
+		// }
+	}
+}
 
+void calc_gini(RESULT &r, PARAM p){
+	vector<double> sum_arr= vector<double>(3), total_area_arr= vector<double>(3),
+					 b_area= vector<double>(3);
+	// build sorted list of consumption TODO: maybe less heuristic if I have time
+	// add up 
+	// MatrixXd sorted_consum = r.consum_arr.rowwise().sum()/3.;
+	MatrixXd sorted_consum = MatrixXd(p.NA)
+
+	MatrixXd stat_dist_2d = MatrixXd(p.NA, p.NZ);
+	cout << "Get Sum \n";
+	// Get sum of variables  - c, y, a
+	//TODO: remove this part
+	unsigned index;
+    for (size_t aidx=0; aidx<p.NA; ++aidx){
+        for (size_t zidx=0; zidx<p.NZ; ++zidx){
+            index = zidx*p.NA + aidx;
+			sum_arr[0] += r.stat_dist(index)*r.consum_arr(aidx, zidx);
+			sum_arr[1] += r.stat_dist(index)*p.states[zidx];
+            sum_arr[2] += r.stat_dist(index)*p.a_grid[aidx];
+			// make stat_dist 2d
+			stat_dist_2d(aidx, zidx) = r.stat_dist(index);
+        }
+    }
+	MatrixXd a_dist = stat_dist_2d.rowwise().sum();
+	MatrixXd y_dist = stat_dist_2d.colwise().sum();
+	MatrixXd c_dist = a_dist;
+	cout << a_dist << "a dist\n";
+	cout << "Get GINIs \n";
+	// Solve GINI - c, y, a
+	for (size_t idx=0;idx<3; ++idx){
+		total_area_arr[idx] = sum_arr[idx]/2.; // triangle and total pop is 1
+	}
+	cout << " consumption GINI \n";
+
+	// consumption gini
+	double this_consum, cumsum_consum=0.;
+	for (size_t cidx=0; cidx<p.NA; ++cidx){
+			this_consum = c_dist(cidx)*sorted_consum(cidx); 
+			b_area[0] += this_consum*c_dist(cidx)/2.; // triangle
+			b_area[0] += cumsum_consum*c_dist(cidx); // the rectangular part
+			// add cumsum at last
+			cumsum_consum += this_consum;
+
+	}
+	cout << " income GINI \n";
+
+	// income gini
+	cout << y_dist;
+	
+	double this_income, cumsum_income=0.;
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+			this_income = y_dist(zidx)*p.states[zidx];
+			b_area[1] += this_income*y_dist(zidx)/2.; // triangle3
+			b_area[1] += cumsum_income*y_dist(zidx); // the rectangular part
+			// add cumsum at last
+			cumsum_income += this_income;
+	}
+	cout << " wealth GINI \n";
+	// wealth gini
+	double this_wealth, cumsum_wealth=0.;
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+			this_wealth = a_dist(aidx)*p.a_grid[aidx]; 
+			b_area[2] += this_wealth*a_dist(aidx)/2.; // triangle
+			b_area[2] += cumsum_wealth*a_dist(aidx); // the rectangular part
+			// add cumsum at last
+			cumsum_wealth += this_wealth;
+
+	}
+	// Get Gini
+	for (size_t idx=0;idx<3; ++idx){
+		total_area_arr[idx] = sum_arr[idx]/2.; // triangle and total pop is 1
+		r.gini_arr(idx) = (total_area_arr[idx]-b_area[idx])/total_area_arr[idx];
+
+	}
+	cout << "Get marginal \n";
+
+	// marginal distribution wrt to its  own quantile
+	// sum is known
+	//consumption
+	double cum_c_dist = 0., old_cumsum_consum, old_cum_c_dist;
+	cumsum_consum = 0.; // double, init before, maybe should change name
+	size_t qidx = 0;
+	for (size_t cidx=0; cidx<p.NA; ++cidx){
+		old_cum_c_dist = cum_c_dist;
+		cum_c_dist += c_dist(cidx);
+		old_cumsum_consum = cumsum_consum;
+		cumsum_consum += c_dist(cidx)*sorted_consum(cidx);
+		while (cum_c_dist>=.2){  
+			r.marginal_dist(qidx, 0) = (old_cumsum_consum+(.2-old_cum_c_dist)*sorted_consum(cidx))/sum_arr[0]; // wrong
+			cum_c_dist -= .2;
+			cumsum_consum = cum_c_dist*sorted_consum(cidx) ; // not sure if it is correct, is all the residual this index? 
+			qidx += 1;
+			// in case the while loop continues
+			old_cumsum_consum = 0;
+			old_cum_c_dist = 0;
+			cout << qidx << " "<< cum_c_dist << " " << cidx << "quantile consum \n";
+
+		}
+		// if (cidx == sorted_consum.size()-1){
+		// 	r.marginal_dist(qidx, 0) = cumsum_consum/sum_arr[0];
+		// }
+	}
+	// income
+	MatrixXd y_vec = MatrixXd(p.NZ, 1);
+	for (size_t yidx=0; yidx<p.NZ; ++yidx){
+		y_vec(yidx) = p.states[yidx];
+	}
+	solve_quantile(r.marginal_dist, p.NZ, y_dist, y_vec, 1, sum_arr);
+	// wealth
+	MatrixXd a_vec = MatrixXd(p.NA, 1);
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		a_vec(aidx) = p.a_grid[aidx];
+	}
+	//TODO: I should store the quantiles position so don't have to calculate again.
+	solve_quantile(r.marginal_dist, p.NA, a_dist, a_vec, 2, sum_arr);
+	// joint distribution wrt to wealth and marginal wealth
+	r.joint_dist.col(2) = r.marginal_dist.col(2);
+	solve_quantile(r.joint_dist, p.NA, a_dist, sorted_consum, 0, sum_arr);
+	// solve_quantile(r.joint_dist, p.NA, a_dist, y_vec, 1, sum_arr); // wrong
+	
 }
 
 
 void write_all (RESULT r, PARAM p,string dir){
-	const int len = 2;
+	const int len = 5;
 	string path =dir+"/data_output/";
-	string fname[len] = {"vf.txt", "consum.txt"};
-	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr};
+	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt"};
+	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr, &r.marginal_dist, &r.joint_dist, &r.gini_arr};
 	ofstream fs;
 	for (size_t i=0;i <len; ++i){
 		fs.open(path+fname[i]);

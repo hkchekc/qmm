@@ -10,6 +10,7 @@ using std::vector;
 #define AIYAGARI_H
 
 struct PARAM{
+	const size_t random_seed = 1000;
 	const double gamma=2.0, delta=0.06, alpha=0.36;
 	const double a_min=0, a_max=20.0;
 	const double net_agg_asset=0.0;
@@ -42,7 +43,8 @@ struct RESULT {
     MatrixXd implied_consum_arr = MatrixXd(param.NA, param.NZ);
     MatrixXd exo_cash_on_hand = MatrixXd(param.NA, param.NZ);
     MatrixXd implied_cash_on_hand = MatrixXd(param.NA, param.NZ);
-
+	// for part 2 quantiles - 
+	MatrixXd marginal_dist = MatrixXd(5, 3), joint_dist = MatrixXd(5, 3), gini_arr = MatrixXd(3, 1);
 };
 
 void init_params(PARAM &p);
@@ -56,5 +58,9 @@ void beta_error(RESULT &r, PARAM p);
 void q_error(RESULT &r, PARAM p);
 void write_all (RESULT r, PARAM p, std::string dir);
 void find_beta(RESULT &r, PARAM p);
+void calc_gini(RESULT &r, PARAM p);
+void calc_quantile(RESULT r, PARAM p);
 void vfi(RESULT &r, PARAM p);
+void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr);
+void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr);
 #endif
