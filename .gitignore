@@ -18,6 +18,7 @@ ps4/*
 # writeups
 *.pdf
 *.lyx
+*.lyx#
 *.tex
 */data_output/*
 */input/*
@@ -66,6 +67,9 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+#matlab
+*.mat
 
 #CPP
 

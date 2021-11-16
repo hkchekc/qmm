@@ -1,6 +1,8 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <cmath>
+#include <fstream>
+#include <iostream>
 #include "include/util.hpp"
 using Eigen::MatrixXd, std::vector;
 
@@ -98,8 +100,8 @@ MatrixXd qmm_util::tauchenhussey(const unsigned n,double mu,double  rho,double s
 //     return {a, a};
 // }
 
-void write_file(MatrixXd *arr, std::string fname){
-		ofstream fs;
+void qmm_util::write_file(MatrixXd *arr, std::string fname){
+		std::ofstream fs;
 		fs.open(fname);
 		if (fs.is_open()){
 			fs << *arr;
