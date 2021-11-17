@@ -73,7 +73,7 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 	next_util_arr = r.vf*p.markov.transpose(); // not sure if in general show I transpose
 	# pragma omp parallel for
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
-		this_a = p.target_interest*p.a_grid[aidx];
+		this_a = p.interest*p.a_grid[aidx];
 		for (size_t zidx=0; zidx<p.NZ; ++zidx){
 			cond_util = -1000.;
 			this_wealth = p.states[zidx]*r.this_wage +this_a;
@@ -127,7 +127,7 @@ void aiyagari::egm(RESULT &r, PARAM p){
         for (size_t zidx=0; zidx<p.NZ; ++zidx){
             r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
             r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
-            r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.target_interest*p.a_grid[aidx];  //TODO: remember to add the wage later
+            r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.interest*p.a_grid[aidx];  //TODO: remember to add the wage later
             // get exogenous 
             //TODO: change the index of first arguement
             aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
@@ -190,12 +190,12 @@ void aiyagari::beta_error(RESULT &r, PARAM p){
 	}
     aiyagari::calc_moment(r, p);
     //TODO: check the direction
-	if (r.implied_interest - p.target_interest < 0.){
+	if (r.implied_interest - p.interest < 0.){
 		r.high_beta = r.beta; 
 	}else {
 		r.low_beta = r.beta;
 	}
-	r.beta_err = abs(r.implied_interest - p.target_interest);
+	r.beta_err = abs(r.implied_interest - p.interest);
 	r.beta = (r.high_beta+r.low_beta)/2;
 	cout << r.implied_interest << "interest" << "\n";
 }

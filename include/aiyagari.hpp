@@ -20,7 +20,7 @@ struct PARAM{
 	MatrixXd markov = MatrixXd(NZ, NZ);
 	const double mu=0, rho=0.95, sigma=0.015;
     const double vf_crit = 1e-4, beta_crit = 1e-4, dist_crit=1e-7;
-    const double target_interest = 1.084;
+    const double interest = 1.084;
     const double calibrated_beta = 0.917493;
 };
 
