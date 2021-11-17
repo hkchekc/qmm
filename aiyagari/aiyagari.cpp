@@ -15,7 +15,7 @@
 using namespace std;
 using Eigen::MatrixXd, Eigen::MatrixXi;
 
-void init_params(PARAM &p){
+void aiyagari::init_params(PARAM &p){
 	MatrixXd tmp(p.NZ, p.NZ+1);
 	tmp = qmm_util::tauchenhussey(p.NZ, p.mu, p.rho, p.sigma);
 	for (size_t i =0; i<p.NZ; ++i){
@@ -35,14 +35,14 @@ void init_params(PARAM &p){
  	}
 }
 
-void calc_moment(RESULT &r, PARAM p){
+void aiyagari::calc_moment(RESULT &r, PARAM p){
     double y = pow(r.agg_cap ,p.alpha)*pow(r.agg_lab , 1. - p.alpha);  //TODO; agg_lab =1 always, can omit
     cout << r.agg_cap << " aggregate capital \n";
     r.implied_interest = p.alpha*y/r.agg_cap +1 - p.delta;  // just check convergence
     r.this_wage = (1- p.alpha)*y/r.agg_lab;  // for next loop
 }
 
-void interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
+void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
 	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
 	gsl_interp* interp_ptr;
 
@@ -65,7 +65,7 @@ void interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p
 	gsl_interp_accel_free( accel_ptr );
 }
 
-void bellman(RESULT &r, PARAM p){
+void aiyagari::bellman(RESULT &r, PARAM p){
 	double consum, util, cond_util, cu, nu, this_wealth, this_a;
 	MatrixXd abs_diff(p.NA, p.NZ);
 	MatrixXd next_util_arr(p.NA, p.NZ);
@@ -106,7 +106,7 @@ void bellman(RESULT &r, PARAM p){
 	r.vf = r.new_vf;
 }
 
-void vfi(RESULT &r, PARAM p){
+void aiyagari::vfi(RESULT &r, PARAM p){
     r.vf_err = 100; 
     // set init vf guess as and the corresponding vfprime guess as 
     // for (size_t aidx=0; aidx<p.NA; ++aidx){
@@ -117,11 +117,11 @@ void vfi(RESULT &r, PARAM p){
 
     while (r.vf_err > p.vf_crit){
         // egm(r, p);
-        bellman(r, p);
+        aiyagari::bellman(r, p);
     }
 }
 
-void egm(RESULT &r, PARAM p){
+void aiyagari::egm(RESULT &r, PARAM p){
     //TODO: Check only in range (no extrapolation)
     for (size_t aidx=0; aidx<p.NA; ++aidx){
         for (size_t zidx=0; zidx<p.NZ; ++zidx){
@@ -130,14 +130,14 @@ void egm(RESULT &r, PARAM p){
             r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.target_interest*p.a_grid[aidx];  //TODO: remember to add the wage later
             // get exogenous 
             //TODO: change the index of first arguement
-            interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
+            aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
             // get value from last 
         }
     }
 
 }
 
-void populat_a_change_mat(RESULT &r, PARAM p){
+void aiyagari::populat_a_change_mat(RESULT &r, PARAM p){
 	int choice, current_state, next_state;
 	r.a_change_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
@@ -161,7 +161,7 @@ void populat_a_change_mat(RESULT &r, PARAM p){
  
 }
 
-void find_stat_dist(RESULT &r, PARAM p){
+void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	double uniform  = 1/(double)p.NA/(double)p.NZ;
 
 	MatrixXd abs_diff(p.NA*p.NZ, 1);
@@ -180,7 +180,7 @@ void find_stat_dist(RESULT &r, PARAM p){
 	}
 }
 
-void beta_error(RESULT &r, PARAM p){
+void aiyagari::beta_error(RESULT &r, PARAM p){
 	r.agg_cap = 0;
 
 	for (size_t aidx=0; aidx < p.NA; ++aidx){
@@ -188,7 +188,7 @@ void beta_error(RESULT &r, PARAM p){
 			r.agg_cap += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
-    calc_moment(r, p);
+    aiyagari::calc_moment(r, p);
     //TODO: check the direction
 	if (r.implied_interest - p.target_interest < 0.){
 		r.high_beta = r.beta; 
@@ -200,20 +200,20 @@ void beta_error(RESULT &r, PARAM p){
 	cout << r.implied_interest << "interest" << "\n";
 }
 
-void find_beta(RESULT &r, PARAM p){
+void aiyagari::find_beta(RESULT &r, PARAM p){
     while (r.beta_err > p.beta_crit){
  		r.vf_err = 100;
 		r.new_vf = MatrixXd::Zero(p.NA, p.NZ);
 		r.vf = MatrixXd::Zero(p.NA, p.NZ);
 		chrono::steady_clock::time_point begin = chrono::steady_clock::now();
- 		vfi(r, p);
+ 		aiyagari::vfi(r, p);
 		cout << r.vf_err << " vf err\n";
 		cout << "done with vfi" << "\n"; 
- 		populat_a_change_mat(r, p);
+ 		aiyagari::populat_a_change_mat(r, p);
 		cout << "done with pop" << "\n"; 
- 		find_stat_dist(r, p);
+ 		aiyagari::find_stat_dist(r, p);
 		cout << "done with stat" << "\n"; 
- 		beta_error(r, p);
+ 		aiyagari::beta_error(r, p);
 		cout << r.beta << " beta \n";
 		chrono::steady_clock::time_point end = chrono::steady_clock::now();
 		cout << "Time difference = " << chrono::duration_cast<chrono::seconds>(end - begin).count() << "[s]" << endl;
@@ -221,7 +221,7 @@ void find_beta(RESULT &r, PARAM p){
  	}
 }
 
-void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr){
+void aiyagari::solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr){
 	cout << "Calling Quantile \n";
 	double cum_x_dist = 0., old_cumsum_x, old_cum_x_dist;
 	double cumsum_x = 0.;
@@ -247,7 +247,7 @@ void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, Matrix
 	}
 }
 
-void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr){
+void aiyagari::get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr){
 	// joint is a 2d array, with shape (a_len, y_len)
 	// which_x: 0 is c, 1 is y, 2 is a
 	cout << "Calling Joint \n";
@@ -278,7 +278,7 @@ void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, Ma
 	cout << unchanged_cumsum << " "<< sum_arr[which_x] << which_x << " match? \n";
 }
 
-void calc_gini(RESULT &r, PARAM p){
+void aiyagari::calc_gini(RESULT &r, PARAM p){
 	vector<double> sum_arr= vector<double>(3), total_area_arr= vector<double>(3),
 					 b_area= vector<double>(3);
 	MatrixXd stat_dist_2d = MatrixXd(p.NA, p.NZ);
@@ -363,23 +363,23 @@ void calc_gini(RESULT &r, PARAM p){
 	// marginal distribution wrt to its  own quantile
 	// sum is known
 	//consumption
-	solve_quantile(r.marginal_dist, p.NZ*p.NA, c_dist, sorted_consum, 0, sum_arr);
+	aiyagari::solve_quantile(r.marginal_dist, p.NZ*p.NA, c_dist, sorted_consum, 0, sum_arr);
 	// income -  first retype states
 	MatrixXd y_vec = MatrixXd(p.NZ, 1);
 	for (size_t yidx=0; yidx<p.NZ; ++yidx){
 		y_vec(yidx) = p.states[yidx];
 	}
-	solve_quantile(r.marginal_dist, p.NZ, y_dist, y_vec, 1, sum_arr);
+	aiyagari::solve_quantile(r.marginal_dist, p.NZ, y_dist, y_vec, 1, sum_arr);
 	// wealth
 	MatrixXd a_vec = MatrixXd(p.NA, 1);
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
 		a_vec(aidx) = p.a_grid[aidx];
 	}
-	solve_quantile(r.marginal_dist, p.NA, a_dist, a_vec, 2, sum_arr);
+	aiyagari::solve_quantile(r.marginal_dist, p.NA, a_dist, a_vec, 2, sum_arr);
 	// joint distribution wrt to wealth and marginal wealth
 	r.joint_dist.col(2) = r.marginal_dist.col(2);
 	// consumption
-	get_joint_dist(r.joint_dist, p.NA, stat_dist_2d, r.consum_arr, 0, sum_arr);
+	aiyagari::get_joint_dist(r.joint_dist, p.NA, stat_dist_2d, r.consum_arr, 0, sum_arr);
 	// income
 	MatrixXd ay_mat = MatrixXd(p.NA, p.NZ);
 	// TODO: 
@@ -388,12 +388,12 @@ void calc_gini(RESULT &r, PARAM p){
 			ay_mat(aidx, zidx) = p.states[zidx];
 		}
 	}
-	get_joint_dist(r.joint_dist, p.NA, stat_dist_2d, ay_mat, 1, sum_arr); // wrong
+	aiyagari::get_joint_dist(r.joint_dist, p.NA, stat_dist_2d, ay_mat, 1, sum_arr); // wrong
 	
 }
 
 
-void write_all (RESULT r, PARAM p,string dir){
+void aiyagari::write_all (RESULT r, PARAM p,string dir){
 	const int len = 5;
 	string path =dir+"/data_output/";
 	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt"};

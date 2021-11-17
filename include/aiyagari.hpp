@@ -47,6 +47,8 @@ struct RESULT {
 	MatrixXd marginal_dist = MatrixXd(5, 3), joint_dist = MatrixXd(5, 3), gini_arr = MatrixXd(3, 1);
 };
 
+namespace aiyagari{
+
 void init_params(PARAM &p);
 void calc_moment(RESULT &r, PARAM p);
 void bellman(RESULT &r, PARAM p);
@@ -55,12 +57,11 @@ void interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p
 void populat_a_change_mat(RESULT &r, PARAM p);
 void find_stat_dist(RESULT &r, PARAM p);
 void beta_error(RESULT &r, PARAM p);
-void q_error(RESULT &r, PARAM p);
 void write_all (RESULT r, PARAM p, std::string dir);
 void find_beta(RESULT &r, PARAM p);
 void calc_gini(RESULT &r, PARAM p);
-void calc_quantile(RESULT r, PARAM p);
 void vfi(RESULT &r, PARAM p);
 void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr);
 void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr);
+}
 #endif

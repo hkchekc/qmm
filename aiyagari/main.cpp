@@ -5,6 +5,7 @@
 #include "include/aiyagari.hpp"
 
 using namespace std;
+using namespace aiyagari;
 using Eigen::MatrixXd;
 
 int main() {

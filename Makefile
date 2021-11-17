@@ -5,7 +5,7 @@ SUPPORT=aiyagari
 _OBJ=$(SRCDIR).o main.o util.o
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))
-_INC=$(SRCDIR).hpp util.hpp
+_INC=$(SRCDIR).hpp util.hpp $(SUPPORT).hpp
 IDIR=include
 INC=$(patsubst %, $(IDIR)/%,$(_INC))
 LIBS=-lm -L/usr/local/lib -lgsl
@@ -19,6 +19,9 @@ main: $(OBJ)
 	$(CC) -Wall -O3 -fopenmp $^ $(LIBS) -o $(TARDIR)/$(SRCDIR)_$@ -lomp
 
 $(ODIR)/%.o: $(SRCDIR)/%.cpp $(INC)
+	$(CC)  $(CFLAGS) $< -o $@
+
+$(ODIR)/$(SUPPORT).o: $(SUPPORT)/$(SUPPORT).cpp $(INC)
 	$(CC)  $(CFLAGS) $< -o $@
 
 $(ODIR)/%.o: util/%.cpp $(INC)
