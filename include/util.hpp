@@ -14,5 +14,7 @@ namespace qmm_util{
     MatrixXd tauchenhussey(unsigned n,double mu,double  rho,double sigma);
     // MatrixXd th_matlab(std::string file, unsigned n);
     void write_file(MatrixXd *arr, std::string dir);
+    bool compare_head(const Eigen::VectorXd& lhs, const Eigen::VectorXd& rhs);
+    MatrixXd sorted_rows_by_head(MatrixXd A);
 }
 #endif

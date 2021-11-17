@@ -1,6 +1,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include "include/util.hpp"
@@ -108,3 +109,23 @@ void qmm_util::write_file(MatrixXd *arr, std::string fname){
 		}
 		fs.close();
 }
+
+// sorting algorithm from https://stackoverflow.com/questions/39693909/sort-eigen-matrix-column-values-by-ascending-order-of-column-1-values
+///////////////////////////////////////////////////////////////////////////////
+bool qmm_util::compare_head(const Eigen::VectorXd& lhs, const Eigen::VectorXd& rhs){
+    return lhs(0) < rhs(0);
+}
+
+MatrixXd qmm_util::sorted_rows_by_head(MatrixXd A){
+    std::vector<Eigen::VectorXd> vec;
+    for (int64_t i = 0; i < A.rows(); ++i)
+        vec.push_back(A.row(i));
+
+    std::sort(vec.begin(), vec.end(), &compare_head);
+
+    for (int64_t i = 0; i < A.rows(); ++i)
+        A.row(i) = vec[i];
+
+    return A;
+}
+///////////////////////////////////////////////////////////////////////////////
