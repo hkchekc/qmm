@@ -18,7 +18,7 @@ using Eigen::MatrixXd, Eigen::MatrixXi;
 void init_params(PARAM &p){
 	MatrixXd tmp(p.NZ, p.NZ+1);
 	tmp = qmm_util::tauchenhussey(p.NZ, p.mu, p.rho, p.sigma);
-	for (int i =0; i<p.NZ; ++i){
+	for (size_t i =0; i<p.NZ; ++i){
 		p.states[i] = tmp(i, p.NZ);
 		p.states[i] = exp(p.states[i]);
 	}
@@ -169,7 +169,7 @@ void find_stat_dist(RESULT &r, PARAM p){
 	r.stat_dist.fill(uniform);
 	r.dist_err = 100;
 	// atempt to imporve performance
-	for (size_t i=0; i<100; ++i){
+	for (size_t i=0; i<50; ++i){
 		r.stat_dist = r.a_change_mat * r.stat_dist;
 	}
 	while (r.dist_err > p.dist_crit){
@@ -249,31 +249,33 @@ void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, Matrix
 
 void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr){
 	// joint is a 2d array, with shape (a_len, y_len)
+	// which_x: 0 is c, 1 is y, 2 is a
 	cout << "Calling Joint \n";
-	double cum_x_dist = 0., old_cumsum_x, old_cum_x_dist;
+	double cum_x_dist = 0., old_cumsum_x=0., old_cum_x_dist=0.;
 	double cumsum_x = 0.;
+	double unchanged_cumsum;
+	double quantile = .2;
 	size_t qidx = 0;
 	double this_weighted_average;
+	MatrixXd x_dist = joint_dist.rowwise().sum();
 	for (size_t xidx=0; xidx<length; ++xidx){
 		old_cum_x_dist = cum_x_dist;
-		cum_x_dist += joint_dist.row(xidx).sum(); // dividing is not needed
+		cum_x_dist += x_dist(xidx); // dividing is not needed
 		old_cumsum_x = cumsum_x;
-		// wrong joint dist * 
-		for (size_t yidx = 0; yidx< joint_dist.row(xidx).size(); ++yidx){
-			cumsum_x += joint_dist(xidx, yidx)*joint_arr(xidx, yidx);
-		}
-		this_weighted_average = cumsum_x - old_cumsum_x;
-		while (cum_x_dist>=.2){  
-			result_arr(qidx, which_x) = (old_cumsum_x+(.2-old_cum_x_dist)*this_weighted_average)/sum_arr[which_x]; 
-			cum_x_dist -= .2;
-			cumsum_x = cum_x_dist*this_weighted_average ; // not sure if it is correct, is all the residual this index? 
+		this_weighted_average = joint_dist.row(xidx).dot(joint_arr.row(xidx));
+		cumsum_x += this_weighted_average;
+		unchanged_cumsum += x_dist(xidx);
+		while (cum_x_dist>=quantile){  
+			result_arr(qidx, which_x) = (old_cumsum_x+(quantile-old_cum_x_dist)*this_weighted_average)/sum_arr[which_x]; 
+			cum_x_dist -= quantile;
+			cumsum_x = this_weighted_average; // * cum_x_dist, I don;t know why this is not needed for me it is wrong. TODO
 			qidx += 1;
 			// in case the while loop continues
 			old_cumsum_x = 0;
 			old_cum_x_dist = 0;
 		}
-		this_weighted_average = 0;
 	}
+	cout << unchanged_cumsum << " "<< sum_arr[which_x] << which_x << " match? \n";
 }
 
 void calc_gini(RESULT &r, PARAM p){
@@ -312,9 +314,9 @@ void calc_gini(RESULT &r, PARAM p){
 	MatrixXd c_dist = sorted_consum_dist.col(1);
 	cout << "Get GINIs \n";
 	// Solve GINI - c, y, a
-	for (size_t idx=0;idx<3; ++idx){
-		total_area_arr[idx] = sum_arr[idx]/2.; // triangle and total pop is 1
-	}
+	// for (size_t idx=0;idx<3; ++idx){
+	// 	total_area_arr[idx] = sum_arr[idx]/2.; // triangle and total pop is 1
+	// }
 	cout << " consumption GINI \n";
 
 	// consumption gini
@@ -381,8 +383,8 @@ void calc_gini(RESULT &r, PARAM p){
 	// income
 	MatrixXd ay_mat = MatrixXd(p.NA, p.NZ);
 	// TODO: 
-	for (size_t aidx=0; aidx<p.NA;++aidx){
-		for (size_t zidx=0; zidx<p.NZ;++zidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		for (size_t zidx=0; zidx<p.NZ; ++zidx){
 			ay_mat(aidx, zidx) = p.states[zidx];
 		}
 	}
