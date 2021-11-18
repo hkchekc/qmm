@@ -195,7 +195,7 @@ void bkm::simulate_dist(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM
     }
 }
 
-void bkm::get_agg_var_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
+void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
     // we ignore the income process and add up the amount of capital
     // get_agg_var_path
     double this_a_dist;
@@ -215,14 +215,13 @@ void bkm::get_agg_var_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p)
             bkm_r.new_ak_path(tidx, 0) = .1;
         }
         // can calculate when things converge
-        // bkm_r.agg_output_path(tidx, 0) = pow(bkm_r.new_ak_path(tidx, 0), p.alpha);
-        // // definitely wrong -  no accum
-        // if (tidx != 0){
-        //     bkm_r.agg_invest_path(tidx, 0) = (bkm_r.new_ak_path(tidx, 0)- bkm_r.new_ak_path(tidx-1, 0))+p.delta*bkm_r.new_ak_path(tidx-1, 0);
-        // } else{
-        //     bkm_r.agg_invest_path(tidx, 0) = 0;
-        // }
-        // bkm_r.agg_c_path(tidx, 0) = bkm_r.agg_output_path(tidx, 0) - bkm_r.agg_invest_path(tidx, 0);
+        bkm_r.agg_output_path(tidx, 0) = pow(bkm_r.new_ak_path(tidx, 0), p.alpha);
+        if (tidx != 0){
+            bkm_r.agg_invest_path(tidx, 0) = (bkm_r.new_ak_path(tidx, 0)- bkm_r.new_ak_path(tidx-1, 0))+p.delta*bkm_r.new_ak_path(tidx-1, 0);
+        } else{
+            bkm_r.agg_invest_path(tidx, 0) = (bkm_r.new_ak_path(tidx, 0)- r.agg_cap)+p.delta*r.agg_cap;
+        }
+        bkm_r.agg_c_path(tidx, 0) = bkm_r.agg_output_path(tidx, 0) - bkm_r.agg_invest_path(tidx, 0);
     }
 }
 
@@ -251,11 +250,11 @@ void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp){
 }
 
 void bkm::write_all(BKM_RES br){
-    const int len = 7;
+    const int len = 8;
     std::string dir = "bkm";
 	std::string path =dir+"/data_output/";
-	std::string fname[len] = {"prod_path.txt", "c_path.txt", "ak_path.txt", "r_path.txt", "wage_path.txt", "i_path.txt", "dist_path.txt"};
-	MatrixXd *pmat[len] = {&br.productivity, &br.agg_c_path, &br.ak_path, &br.r_path, &br.wage_path, &br.agg_invest_path, &br.dist_path};
+	std::string fname[len] = {"prod_path.txt", "c_path.txt", "ak_path.txt", "r_path.txt", "wage_path.txt", "i_path.txt", "dist_path.txt", "y_path.txt"};
+	MatrixXd *pmat[len] = {&br.productivity, &br.agg_c_path, &br.ak_path, &br.r_path, &br.wage_path, &br.agg_invest_path, &br.dist_path, &br.agg_output_path};
 	for (size_t i=0;i <len; ++i){
         qmm_util::write_file(pmat[i], path+fname[i]) ; 
     }

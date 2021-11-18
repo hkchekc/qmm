@@ -14,7 +14,7 @@ struct BKM_PARAM{
     std::mt19937 rng;
     const unsigned TIME= 200; // time for converging back to SS
     const unsigned long NH = 5000; // number of housholds in simulating 
-    const double shock = 0.565; // consistent with KS. 
+    const double shock = 1; // consistent with KS. 
     const double path_crit = 1e-2;  // crit for path convergence
     const double rho=0.9; 
 };
@@ -52,7 +52,7 @@ namespace bkm{
     void init_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p);
     void egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp);
     void simulate_dist(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp);
-    void get_agg_var_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p);
+    void get_agg_var_path(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p);
     void get_implied_price_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p);
     void update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp);
     void simulation(); // to get variance and cov of agg moments

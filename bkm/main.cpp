@@ -26,7 +26,7 @@ int main() {
         simulate_dist(r, p, br, bp);
 		cout << "done with dist sim \n";
     	cout << "=============================== \n";
-        get_agg_var_path(p, br, bp);
+        get_agg_var_path(r, p, br, bp);
 		cout << br.new_ak_path(bp.TIME-1) << " last aggregate capital \n";
 		cout << "done with AK path \n";
     	cout << "=============================== \n";
