@@ -137,25 +137,29 @@ void aiyagari::egm(RESULT &r, PARAM p){
 
 }
 
-void aiyagari::populat_a_change_mat(RESULT &r, PARAM p){
+void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
+	aiyagari::get_a_change_mat(r.a_change_mat, r.pfunc, p);
+}
+
+void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM p){
 	int choice, current_state, next_state;
-	r.a_change_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
+	a_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
 		for (size_t zidx=0; zidx<p.NZ; ++zidx){
 			current_state = zidx*p.NA+aidx;
-			choice = r.pfunc(aidx, zidx);
+			choice = pol(aidx, zidx);
 			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
 				next_state = nzidx*p.NA + choice;
-				r.a_change_mat(next_state, current_state) += p.markov(zidx, nzidx); 
+				a_mat(next_state, current_state) += p.markov(zidx, nzidx); 
 			}
 		}
 	}
 // not sure but I think the eigenvector should be the same with or without normalizing
   	float sum_row;
   	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
-  		sum_row = r.a_change_mat.col(i).sum();
+  		sum_row = a_mat.col(i).sum();
   		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
-  		 	r.a_change_mat(j,i) /= sum_row;
+  		 	a_mat(j,i) /= sum_row;
   		}
   	}
  
@@ -168,16 +172,24 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	MatrixXd new_stat_dist(p.NA*p.NZ,1);
 	r.stat_dist.fill(uniform);
 	r.dist_err = 100;
-	// atempt to imporve performance
-	for (size_t i=0; i<50; ++i){
-		r.stat_dist = r.a_change_mat * r.stat_dist;
-	}
+	// atempts to imporve performance - if updating too much as once, will lead to instability
+	MatrixXd tmp_a_mat = r.a_change_mat*r.a_change_mat*r.a_change_mat;
+	MatrixXd tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
+	// MatrixXd tmp_a_mat = Apow(2.);
+	// r.stat_dist = tmp_a_mat*r.stat_dist;
+	// for (size_t i=0; i<50; ++i){
+	// 	r.stat_dist = r.a_change_mat * r.stat_dist;
+	// }
+	// unsigned i = 0;
 	while (r.dist_err > p.dist_crit){
-		new_stat_dist = r.a_change_mat * r.stat_dist;
+		new_stat_dist = tmp_tmp_a_mat * r.stat_dist;
 		abs_diff = new_stat_dist - r.stat_dist;
 		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
 		r.stat_dist = new_stat_dist;
+		// i += 1;
 	}
+	// cout << i << "count for stat dist \n";
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
@@ -196,7 +208,8 @@ void aiyagari::beta_error(RESULT &r, PARAM p){
 		r.low_beta = r.beta;
 	}
 	r.beta_err = abs(r.implied_interest - p.interest);
-	r.beta = (r.high_beta+r.low_beta)/2;
+	double ratio = 0.5;
+	r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
 	cout << r.implied_interest << "interest" << "\n";
 }
 
@@ -253,7 +266,7 @@ void aiyagari::get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd join
 	cout << "Calling Joint \n";
 	double cum_x_dist = 0., old_cumsum_x=0., old_cum_x_dist=0.;
 	double cumsum_x = 0.;
-	double unchanged_cumsum;
+	double unchanged_cumsum=0.;
 	double quantile = .2;
 	size_t qidx = 0;
 	double this_weighted_average;
@@ -268,6 +281,7 @@ void aiyagari::get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd join
 		while (cum_x_dist>=quantile){  
 			result_arr(qidx, which_x) = (old_cumsum_x+(quantile-old_cum_x_dist)*this_weighted_average)/sum_arr[which_x]; 
 			cum_x_dist -= quantile;
+			// maybe 1 - (quantile-old_cum_x_dist)/cum_x_dist?
 			cumsum_x = this_weighted_average; // * cum_x_dist, I don;t know why this is not needed for me it is wrong. TODO
 			qidx += 1;
 			// in case the while loop continues

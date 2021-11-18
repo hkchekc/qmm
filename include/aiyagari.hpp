@@ -10,11 +10,10 @@ using std::vector;
 #define AIYAGARI_H
 
 struct PARAM{
-	const size_t random_seed = 1000;
 	const double gamma=2.0, delta=0.06, alpha=0.36;
 	const double a_min=0, a_max=20.0;
 	const double net_agg_asset=0.0;
-	const unsigned NA=1000, NZ=3;
+	const unsigned NA=500, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);
@@ -22,6 +21,7 @@ struct PARAM{
     const double vf_crit = 1e-4, beta_crit = 1e-4, dist_crit=1e-7;
     const double interest = 1.084;
     const double calibrated_beta = 0.917493;
+	const double a_inc = (a_max-a_min)/(double)NA;
 };
 
 struct RESULT {
@@ -61,6 +61,7 @@ void write_all (RESULT r, PARAM p, std::string dir);
 void find_beta(RESULT &r, PARAM p);
 void calc_gini(RESULT &r, PARAM p);
 void vfi(RESULT &r, PARAM p);
+void get_a_change_mat(MatrixXd &a_mat, const Eigen::MatrixXi pol, const PARAM p);
 void solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_dist, MatrixXd sorted_arr, size_t which_x, vector<double> sum_arr);
 void get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd joint_dist, MatrixXd joint_arr, size_t which_x, vector<double> sum_arr);
 }

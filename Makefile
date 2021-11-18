@@ -2,10 +2,18 @@ CC=g++-8
 CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. -I/usr/local/include
 SRCDIR=bkm
 SUPPORT=aiyagari
-_OBJ=$(SRCDIR).o main.o util.o $(SUPPORT).o
+ifeq ($(SUPPORT),)
+	_OBJ=$(SRCDIR).o main.o util.o
+else
+	_OBJ=$(SRCDIR).o main.o util.o $(SUPPORT).o
+endif
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))
-_INC=$(SRCDIR).hpp util.hpp $(SUPPORT).hpp
+ifeq ($(SUPPORT),)
+	_INC=$(SRCDIR).hpp util.hpp
+else
+	_INC=$(SRCDIR).hpp util.hpp $(SUPPORT).hpp
+endif
 IDIR=include
 INC=$(patsubst %, $(IDIR)/%,$(_INC))
 LIBS=-lm -L/usr/local/lib -lgsl
