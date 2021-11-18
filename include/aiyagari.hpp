@@ -13,7 +13,7 @@ struct PARAM{
 	const double gamma=2.0, delta=0.06, alpha=0.36;
 	const double a_min=0, a_max=20.0;
 	const double net_agg_asset=0.0;
-	const unsigned NA=500, NZ=3;
+	const unsigned NA=700, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);

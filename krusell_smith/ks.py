@@ -10,11 +10,10 @@ r = res()
 init_shocks(p, r)
 get_prices(p, r)
 
-while r.error < 0.8:
+while r.error < 0.7:
     vfi(p, r)
     pseudo_panel(p, r)
     calc_errors(p, r)
-    print()
 
 end = time()
 print("Elapse time is {} s".format(end-start))

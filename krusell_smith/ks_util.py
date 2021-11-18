@@ -19,11 +19,11 @@ class param:
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
         self.agg_states = np.array([.984569568887006, 1.01713588246477])
         self.NH = 200
-        self.NT = 1000
+        self.NT = 3000
         self.DROP = 100
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
-        self.NK = 20
+        self.NK = 100
         self.NAK = 10
         self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
@@ -123,15 +123,17 @@ def calc_errors(p, r):
     model_good = api.OLS(np.log(good_next_ak), good_x)
     results = model_good.fit()
     r.error = results.rsquared
-    r.slope[1] = r.error*results.params[1]+(1-r.error)*r.slope[1]
-    r.intercept[1] = r.error*results.params[0]+(1-r.error)*r.intercept[0]
+    ratio = 1
+    r.slope[1] = ratio*results.params[1]+(1-ratio)*r.slope[1]
+    r.intercept[1] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
     r.error = results.rsquared
     bad_x = api.add_constant(np.log(bad_ak))
     model_bad = api.OLS(np.log(bad_next_ak), bad_x)
     results = model_bad.fit()
     bad_rsq = results.rsquared
-    r.slope[0] = bad_rsq*results.params[1]+(1-bad_rsq)*r.slope[0]
-    r.intercept[0] = bad_rsq*results.params[0]+(1-bad_rsq)*r.intercept[0]
+
+    r.slope[0] = ratio*results.params[1]+(1-ratio)*r.slope[0]
+    r.intercept[0] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
     r.error = max(bad_rsq, r.error)
     print("bad/good intercepts -> ",r.intercept)
     print("bad/good slopes -> ",r.slope)

@@ -17,7 +17,15 @@ baseSigmai = wi*sigmai+(1-wi)*sigmaZi;
 [X, Yprob] = tauchenhussey(Ni,mui,rhoi,sigmai,baseSigmai);
 Y = exp(X);
 bigTrans = kron(Aprob, Yprob);
-fileID = fopen('exp.txt','w');
-fprintf(fileID,'%6s %12s\n','x','exp(x)');
-fprintf(fileID,'%6.2f %12.8f\n',A);
+fileID = fopen('./krusell_smith/input/markov.txt','w');
+
+fprintf(fileID,'%5d %5d %5d %5d %5d %5d\n', bigTrans);
+fclose(fileID);
+fileID = fopen('./krusell_smith/input/amarkov.txt','w');
+
+fprintf(fileID,'%5d %5d\n', Aprob);
+fclose(fileID);
+fileID = fopen('./krusell_smith/input/ymarkov.txt','w');
+
+fprintf(fileID,'%5d %5d %5d\n', Yprob);
 fclose(fileID);

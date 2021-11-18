@@ -27,18 +27,18 @@ int main() {
 		cout << "done with dist sim \n";
     	cout << "=============================== \n";
         get_agg_var_path(p, br, bp);
-		cout << br.new_ak_path(p.NA-1) << "\n";
+		cout << br.new_ak_path(bp.TIME-1) << " last aggregate capital \n";
 		cout << "done with AK path \n";
     	cout << "=============================== \n";
         get_implied_price_path(p, br, bp);
 		cout << "done with price path \n";
     	cout << "=============================== \n";
-        update_error(br);
+        update_error(br, p, bp);
 		// br.path_err = 0.;
 		cout << br.path_err << " new error \n";
     	cout << "=============================== \n";
 	}
-	// write_all();
+	write_all(br);
 	chrono::steady_clock::time_point tot_end = chrono::steady_clock::now();
 	cout << "BKM Time difference = " << chrono::duration_cast<chrono::seconds>(tot_end - tot_begin).count() << "[s]" << endl;
 	return 0;
