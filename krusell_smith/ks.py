@@ -17,3 +17,5 @@ while r.error < 0.7:
 
 end = time()
 print("Elapse time is {} s".format(end-start))
+
+

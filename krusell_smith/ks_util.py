@@ -18,8 +18,8 @@ class param:
         self.ak_min = 0.01
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
         self.agg_states = np.array([.984569568887006, 1.01713588246477])
-        self.NH = 200
-        self.NT = 3000
+        self.NH = 300
+        self.NT = 2000
         self.DROP = 100
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
@@ -71,6 +71,7 @@ def init_shocks(p, r):
     # randomize initial period capital endowment
     r.sim_small_k[0, :] = p.rng.choice(p.k_grid, size=p.NH)
     r.sim_ak[0] = np.mean(r.sim_small_k[0, :])
+    print(r.sim_ak[0], "===========================")
 
 def get_prices(p, r):
     r.interest, r.wage = _get_prices(p.ak_grid, p.agg_states, p.NAK, p.NZ, p.alpha, p.delta)
