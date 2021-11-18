@@ -152,8 +152,8 @@ void bellman(RESULT &r, PARAM &p){
 				if (this_wealth <p.a_grid[choice]) {
 					break; // if this choice is over current state wealth, all later a' are over
 				}
-				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
 				consum = this_wealth- p.a_grid[choice];
+				// cu = (pow(consum, 1.-p.gamma)-1)/(1.-p.gamma);// current utility
 				cu = .5/(consum*consum); // more efficient by putting the negative sign only when calc tot util
 				// nu = p.markov.row(zidx).dot(r.vf.row(choice)); // next utility
 				nu = next_util_arr(choice, zidx);

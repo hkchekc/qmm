@@ -1,3 +1,7 @@
+# Project specific
+others_code/*
+ps4/*
+
 # For vim
 # Swap
 [._]*.s[a-v][a-z]
@@ -14,6 +18,7 @@
 # writeups
 *.pdf
 *.lyx
+*.lyx#
 *.tex
 */data_output/*
 */input/*
@@ -62,6 +67,9 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+#matlab
+*.mat
 
 #CPP
 
