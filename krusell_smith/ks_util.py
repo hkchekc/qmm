@@ -1,13 +1,13 @@
 import numpy as np
 from numpy import random
 from numba import njit
-from scipy import interpolate
+from scipy import interpolate, ndimage
 from statsmodels import regression, api
 
 class param:
 
     def __init__(self):
-        self.rng = random.default_rng(seed=1000)
+        self.rng = random.default_rng(seed=5000)
         self.beta = .917493
         self.gamma = 2.
         self.alpha = 0.36
@@ -18,13 +18,13 @@ class param:
         self.ak_min = 0.01
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
         self.agg_states = np.array([.984569568887006, 1.01713588246477])
-        self.NH = 300
-        self.NT = 2000
-        self.DROP = 100
+        self.NH = 200
+        self.NT = 1000
+        self.DROP = 20
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
-        self.NK = 100
-        self.NAK = 10
+        self.NK = 200
+        self.NAK = 20
         self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
         self.markov = np.genfromtxt("input/markov.txt")
@@ -45,8 +45,8 @@ class res:
     def __init__(self):
         # initial guess
         p = param()
-        self.intercept = np.array([0.095, 0.085])
-        self.slope = np.array([0.99, 0.99])
+        self.intercept = np.array([-0.005, 0.15])
+        self.slope = np.array([.84, 0.95])
         self.interst =  np.zeros((p.NAK, p.NZ))
         self.wage =  np.zeros((p.NAK, p.NZ))
         self.vfunc = None
@@ -103,7 +103,7 @@ def pseudo_panel(p, r):
     k_decision = p.k_grid[r.pfunc]
     r.sim_ak[1:] = 0
     r.sim_small_k[1:, :] = 0
-    r.sim_ak, r.sim_small_k = _pseudo_panel(net_time, p.NH, p.agg_shocks, p.ind_shocks,
+    r.sim_ak, r.sim_small_k = _pseudo_panel(net_time, p.NY, p.agg_shocks, p.ind_shocks,
                                             p.k_grid, p.ak_grid, k_decision, r.sim_small_k, r.sim_ak)
 
 def calc_errors(p, r):
@@ -174,13 +174,19 @@ def  _get_consum_arr(NK, NY, NAK, NZ, coh_arr, k_grid, gamma):
 def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ):
     exp_next_u = np.zeros((NK, NY, NAK, NZ, NK))
     for zi in range(NZ):
-        for kpi in range(NK):
-            for yi in range(NY):
-                interpolate_f = interpolate.interp1d(ak_grid, vfunc[kpi, yi, :, zi],
-                                                 fill_value="extrapolate", kind="linear")
-                # next util no matter current k state
+        for yi in range(NY):
+            for kpi in range(NK):
                 for aki in range(NAK):
-                    exp_next_u[:, yi, aki, zi, kpi] += interpolate_f(ak_est[0, yi, aki, zi])
+                    exp_next_u[:, yi, aki, zi, kpi] += np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, yi, :, zi])
+                # try:
+                #     for aki in range(NAK):
+                #         exp_next_u[:, yi, aki, zi, kpi] += np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, yi, :, zi] )
+                # except ValueError:
+                #     interpolate_f = interpolate.interp1d(ak_grid, vfunc[kpi, yi, :, zi],
+                #                                      fill_value="extrapolate", kind="linear")
+                #     # next util no matter current k state
+                #     for aki in range(NAK):
+                #         exp_next_u[:, yi, aki, zi, kpi] += interpolate_f(ak_est[0, yi, aki, zi])
 
     vfunc_tmp = util_arr + beta*exp_next_u  # 5 dimensional object
 
@@ -189,15 +195,25 @@ def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ):
     error = np.max(np.abs(vfunc_new - vfunc))
     return error, pfunc, vfunc_new
 
-def _pseudo_panel(net_time, NH, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
+
+def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
     for tidx in range(1, net_time):
         zi = agg_shock[tidx-1]
         last_ak = sim_ak[tidx-1]
-        for hidx in range(NH):
-            yi = ind_shock[tidx-1, hidx]
-            last_small_k = sim_small_k[tidx - 1, hidx]
-            # probably some fortran stuff interp2d is column major
+        for yi in range(NY):
             interpolate_f = interpolate.interp2d(ak_grid, k_grid, k_decision[:, yi, :, zi], kind="linear")
-            sim_small_k[tidx, hidx] = interpolate_f(last_small_k, last_ak)
+            mx = ind_shock[tidx-1, :] == yi
+            last_small_k = sim_small_k[tidx - 1, :][mx]
+            sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
+    # for tidx in range(1, net_time):
+    #     zi = agg_shock[tidx-1]
+    #     last_ak = sim_ak[tidx-1]
+    #     for yi in range(NY):
+    #         interpolate_f = interpolate.interp2d(ak_grid, k_grid, k_decision[:, yi, :, zi], kind="linear")
+    #         mx = ind_shock[tidx-1, :] == yi
+    #         last_small_k = sim_small_k[tidx - 1, :][mx]
+    #         sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
+
+
         sim_ak[tidx] = np.mean(sim_small_k[tidx, :])
     return sim_ak, sim_small_k
