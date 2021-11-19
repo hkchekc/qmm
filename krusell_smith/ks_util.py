@@ -1,8 +1,8 @@
 import numpy as np
 from numpy import random
 from numba import njit
-from scipy import interpolate, ndimage
-from statsmodels import regression, api
+from scipy import interpolate
+from statsmodels import api
 
 class param:
 
@@ -18,8 +18,8 @@ class param:
         self.ak_min = 0.01
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
         self.agg_states = np.array([.984569568887006, 1.01713588246477])
-        self.NH = 200
-        self.NT = 1000
+        self.NH = 400
+        self.NT = 5000
         self.DROP = 20
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
@@ -76,7 +76,7 @@ def init_shocks(p, r):
 def get_prices(p, r):
     r.interest, r.wage = _get_prices(p.ak_grid, p.agg_states, p.NAK, p.NZ, p.alpha, p.delta)
 
-@njit(parallel=True)
+@njit
 def _get_prices(ak_grid, zgrid, NAK, NZ, alpha, delta):
     interest = np.zeros((NAK, NZ))
     wage = np.zeros((NAK, NZ))
@@ -95,7 +95,7 @@ def vfi(p, r):
     r.vfunc = np.amax(util_arr, axis=4)  # initial guess
     r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int8)
     while err_vfi > p.vfi_crit:
-        err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ)
+        err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, p.markov)
         print(err_vfi)
 
 def pseudo_panel(p, r):
@@ -152,7 +152,7 @@ def _est_agg_cap(ak_grid, NK, NY, NAK, NZ, intercept, slope):
     next_ak[mx] = ak_grid[-1]
     return next_ak
 
-@njit(parallel=True)
+@njit
 def _get_coh(NK, NY, NAK, NZ, interest_arr, ind_states, k_grid, wage_arr):
     coh_arr = np.zeros((NK, NY, NAK, NZ))
     for ki in range(NK):
@@ -161,7 +161,6 @@ def _get_coh(NK, NY, NAK, NZ, interest_arr, ind_states, k_grid, wage_arr):
             coh_arr[ki, yi, :, :] = tmp_cap_gain + wage_arr*ind_states[yi]
     return coh_arr
 
-# @njit(parallel=True)
 def  _get_consum_arr(NK, NY, NAK, NZ, coh_arr, k_grid, gamma):
     consum_arr = np.zeros((NK, NY, NAK, NZ, NK))
     for ki, k in enumerate(k_grid):
@@ -171,30 +170,28 @@ def  _get_consum_arr(NK, NY, NAK, NZ, coh_arr, k_grid, gamma):
     util_arr[mx] = (np.power(consum_arr[mx], 1-gamma) -1.)/(1-gamma)
     return consum_arr, util_arr
 
-def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ):
-    exp_next_u = np.zeros((NK, NY, NAK, NZ, NK))
-    for zi in range(NZ):
-        for yi in range(NY):
-            for kpi in range(NK):
-                for aki in range(NAK):
-                    exp_next_u[:, yi, aki, zi, kpi] += np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, yi, :, zi])
-                # try:
-                #     for aki in range(NAK):
-                #         exp_next_u[:, yi, aki, zi, kpi] += np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, yi, :, zi] )
-                # except ValueError:
-                #     interpolate_f = interpolate.interp1d(ak_grid, vfunc[kpi, yi, :, zi],
-                #                                      fill_value="extrapolate", kind="linear")
-                #     # next util no matter current k state
-                #     for aki in range(NAK):
-                #         exp_next_u[:, yi, aki, zi, kpi] += interpolate_f(ak_est[0, yi, aki, zi])
-
-    vfunc_tmp = util_arr + beta*exp_next_u  # 5 dimensional object
-
+def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
+    vfunc_tmp = _construct_next_vfunc_tmp(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov)
     pfunc = np.argmax(vfunc_tmp, axis=4)
     vfunc_new = np.amax(vfunc_tmp, axis=4)  # improve efficiency bt using pfunc
     error = np.max(np.abs(vfunc_new - vfunc))
     return error, pfunc, vfunc_new
 
+@njit
+def _construct_next_vfunc_tmp(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
+    exp_next_u = np.zeros((NK, NY, NAK, NZ, NK))
+    for zi in range(NZ):
+        for yi in range(NY):
+            this_idx = zi*NY +yi
+            for kpi in range(NK):
+                for aki in range(NAK):
+                    for nzi in range(NZ):
+                        for nyi in range(NY):
+                            next_idx = nzi*NY +nyi
+                            exp_next_u[:, yi, aki, zi, kpi] += markov[this_idx,
+                                        next_idx]*np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, nyi, :, nzi])
+
+    return util_arr + beta*exp_next_u  # 5 dimensional object
 
 def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
     for tidx in range(1, net_time):
@@ -205,15 +202,5 @@ def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision
             mx = ind_shock[tidx-1, :] == yi
             last_small_k = sim_small_k[tidx - 1, :][mx]
             sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
-    # for tidx in range(1, net_time):
-    #     zi = agg_shock[tidx-1]
-    #     last_ak = sim_ak[tidx-1]
-    #     for yi in range(NY):
-    #         interpolate_f = interpolate.interp2d(ak_grid, k_grid, k_decision[:, yi, :, zi], kind="linear")
-    #         mx = ind_shock[tidx-1, :] == yi
-    #         last_small_k = sim_small_k[tidx - 1, :][mx]
-    #         sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
-
-
         sim_ak[tidx] = np.mean(sim_small_k[tidx, :])
     return sim_ak, sim_small_k
