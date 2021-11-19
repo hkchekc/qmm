@@ -1,13 +1,14 @@
 import numpy as np
+from time import time
 import math
 import matplotlib.pyplot as plt
-from numba import jit
+from numba import njit
 from scipy import interpolate, stats
-# from sklearn.neighbors import KernelDensity
 from numpy.random import MT19937, Generator
 
 
-@jit(nopython=True, parallel=True)
+start = time()
+@njit
 def map_to_nearest_grid(income_grids, income_processes):
     approx_income = np.zeros(income_processes.shape)
     for hi, household_income in enumerate(income_processes):
@@ -26,13 +27,41 @@ def bequest_implied_consumption(tmr_a):
     return c
 
 
-@jit(nopython=True)
+@njit
 def phi_bequest_prime(tmr_a):
     if phi1 == 0:
         return 0
     pre_term = net_tax * (1 - gamma) * phi1 / phi2
     next_term = 1 + (net_tax * tmr_a) / phi2
     return pre_term / (next_term ** gamma)
+
+@njit
+def get_this_gini(this_asset):
+    this_gini = 0
+    for i, i_asset in enumerate(this_asset):
+        for j, j_asset in enumerate(this_asset):
+            this_gini += abs(i_asset - j_asset)
+    return this_gini
+
+@njit
+def get_next_val(tmp_consum):
+    next_value = np.zeros((NA, NZ))
+    for last_zidx in range(NZ):
+        for aidx in range(NA):
+            this_val = beta * interest / (tmp_consum[aidx, last_zidx] ** gamma)  # step 5
+            for zidx in range(NZ):
+                next_value[aidx, zidx] += markov[zidx, last_zidx] * this_val  # error-prone
+    return next_value
+
+@njit
+def fill_working_implied(next_value):
+    tmp_consum = np.zeros((NA+1, NZ))
+    tmp_coh = np.zeros((NA+1, NZ))
+    for aidx in range(1, NA + 1):
+        for zidx in range(NZ):
+            tmp_consum[aidx, zidx] = 1 / ((next_value[aidx - 1, zidx]) ** inv_gamma)
+            tmp_coh[aidx, :] = tmp_consum[aidx, :] + tmr_a_grid[aidx - 1]
+    return tmp_consum, tmp_coh
 
 
 # parameters
@@ -154,7 +183,7 @@ while bequest_err > crit and maxit > cit:
     implied_consum_arr = np.zeros((NA + 1, NZ, life_time))
     next_value = np.zeros((NA, NZ))
     implied_cash_on_hand = np.zeros((NA + 1, NZ, life_time))
-
+    egmstart = time()
     # Populate last period
     for aidx in range(NA):
         # I just define the init coh as correct grid
@@ -173,8 +202,6 @@ while bequest_err > crit and maxit > cit:
                 implied_consum_arr[aidx, :, tidx] = 1 / ((next_value[aidx - 1, 0]) ** inv_gamma)
                 implied_cash_on_hand[aidx, :, tidx] = implied_consum_arr[aidx, :, tidx] + tmr_a_grid[aidx - 1]
             greatest_constrainted_cash_on_hand[tidx] = implied_cash_on_hand[1, 0, tidx]
-            interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, 0, tidx], implied_consum_arr[:, 0, tidx],
-                                                 fill_value="extrapolate", kind="linear")
             if tidx == bequest_time:  # last period of using these object, so no worries of wrong shape etc.
                 # the exo cash on hand should be more  and also in different shape
                 exo_pension_cash_on_hand = np.zeros((NA, NB))
@@ -183,12 +210,21 @@ while bequest_err > crit and maxit > cit:
             else:
                 exo_pension_cash_on_hand = interest * tmr_a_grid + pension_income
 
+            # interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, 0, tidx], implied_consum_arr[:, 0, tidx],
+            #                                      fill_value="extrapolate", kind="linear")
             if tidx != bequest_time:
-                exo_consum_arr[:, 0, tidx, 0] = interpolate_f(exo_pension_cash_on_hand)
+                try:
+                    exo_consum_arr[:, 0, tidx, 0] = np.interp(exo_pension_cash_on_hand, implied_cash_on_hand[:, 0, tidx], implied_consum_arr[:, 0, tidx])
+                except ValueError:
+                    interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, 0, tidx], implied_consum_arr[:, 0, tidx],
+                                                     fill_value="extrapolate", kind="linear")
+                    exo_consum_arr[:, 0, tidx, 0] = interpolate_f(exo_pension_cash_on_hand)
                 # Make sure no negative consumption or over asset constraint
                 mx = np.ma.masked_less_equal(exo_pension_cash_on_hand, greatest_constrainted_cash_on_hand[tidx]).mask
                 exo_consum_arr[:, 0, tidx, 0][mx] = exo_pension_cash_on_hand[mx]
             else:  # again rely on the bequest time being the last period that use this piece of code
+                interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, 0, tidx], implied_consum_arr[:, 0, tidx],
+                                                 fill_value="extrapolate", kind="linear")
                 for bidx in range(NB):
                     for aidx in range(NA):
                         exo_consum_arr[aidx, 0, tidx, bidx] = interpolate_f(exo_pension_cash_on_hand[aidx, bidx])
@@ -214,35 +250,39 @@ while bequest_err > crit and maxit > cit:
                 next_value[:, i] = next_value[:, 0]
 
         else:  # working age
+            implied_consum_arr[:,:, tidx], implied_cash_on_hand[:,:, tidx] = fill_working_implied(next_value)
             for zidx in range(NZ):
-                for aidx in range(1, NA + 1):
-                    implied_consum_arr[aidx, zidx, tidx] = 1 / ((next_value[aidx - 1, zidx]) ** inv_gamma)
-                    implied_cash_on_hand[aidx, zidx, tidx] = implied_consum_arr[aidx, zidx, tidx] + tmr_a_grid[aidx - 1]
+            #     for aidx in range(1, NA + 1):
+            #         implied_consum_arr[aidx, zidx, tidx] = 1 / ((next_value[aidx - 1, zidx]) ** inv_gamma)
+            #         implied_cash_on_hand[aidx, zidx, tidx] = implied_consum_arr[aidx, zidx, tidx] + tmr_a_grid[aidx - 1]
                 # see where it binds
                 greatest_constrainted_cash_on_hand[tidx] = implied_cash_on_hand[1, zidx, tidx]
                 exo_working_cash_on_hand[:, zidx, tidx] = interest * tmr_a_grid + states[zidx] * profile[tidx]
-                interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, zidx, tidx],
-                                                     implied_consum_arr[:, zidx, tidx],
-                                                     fill_value="extrapolate", kind="linear")
-                exo_consum_arr[:, zidx, tidx, 0] = interpolate_f(exo_working_cash_on_hand[:, zidx, tidx])
+                try:
+                    exo_consum_arr[:, zidx, tidx, 0] = np.interp(exo_working_cash_on_hand[:, zidx, tidx], implied_cash_on_hand[:, zidx, tidx],
+                                                         implied_consum_arr[:, zidx, tidx])
+                except ValueError:
+                    interpolate_f = interpolate.interp1d(implied_cash_on_hand[:, zidx, tidx],
+                                                         implied_consum_arr[:, zidx, tidx],
+                                                         fill_value="extrapolate", kind="linear")
+                    exo_consum_arr[:, zidx, tidx, 0] = interpolate_f(exo_working_cash_on_hand[:, zidx, tidx])
                 # Make sure no negative consumption or over asset constraint
                 mx = np.ma.masked_less_equal(exo_working_cash_on_hand[:, zidx, tidx],
                                              greatest_constrainted_cash_on_hand[tidx]).mask
                 exo_consum_arr[:, zidx, tidx, 0][mx] = exo_working_cash_on_hand[:, zidx, tidx][mx]
             # not using next period value after getting this.consumption, therefore I can flush it here.
-            next_value = np.zeros((NA, NZ))
-            tmp_consum = exo_consum_arr[:, :, tidx, 0]
-            for last_zidx in range(NZ):
-                for aidx in range(NA):
-                    this_val = beta * interest / (tmp_consum[aidx, last_zidx] ** gamma)  # step 5
-                    for zidx in range(NZ):
-                        next_value[aidx, zidx] += markov[zidx, last_zidx] * this_val  # error-prone
+            next_value = get_next_val(exo_consum_arr[:, :, tidx, 0])
+
 
     np.savetxt("data_output/consumption_policy.csv", implied_consum_arr[:, :, 0], delimiter=",")
     np.savetxt("data_output/income.csv", implied_consum_arr[:, :, 40], delimiter=",")
     np.savetxt("data_output/coh.csv", implied_consum_arr[:, :, 39], delimiter=",")
-
-    # simulation
+    end = time()
+    print("after egmElapse time is {}".format(end - egmstart))
+    print("=======================================================")
+    ################################## Simulation ###############################
+    #############################################################################
+    simstart = time()
     simu_consum = np.zeros((NHOUSE, life_time))
     simu_asset = np.zeros((NHOUSE, life_time))
     simu_asset[:, 0] = initial_capital
@@ -252,14 +292,9 @@ while bequest_err > crit and maxit > cit:
     # get bequests
     tmp_bequest = np.exp(rng.normal(bequest_params[1], bequest_params[2], size=NHOUSE))
     bequest_received = tmp_bequest
-    bequest_received_cap = math.exp(3 * bequest_params[2] + bequest_params[1])
-    # tmp_rand = rng.uniform(0, 1, size=NHOUSE) < bequest_params[0]
-    # bequest_received[tmp_rand] = 0
-    # bequest_received[bequest_received > bequest_received_cap] = bequest_received_cap
-    for house in range(NHOUSE):
-        bequest_received[house] = rng.choice([bequest_received[house], 0],
-                                             1, p=[1 - bequest_params[0], bequest_params[0]])
-        bequest_received[bequest_received > bequest_received_cap] = bequest_received_cap
+    bequest_received_cap = np.exp(3 * bequest_params[2] + bequest_params[1])
+    bequest_received *= rng.choice([1, 0], NHOUSE, p=[1 - bequest_params[0], bequest_params[0]])
+    bequest_received[bequest_received > bequest_received_cap] = bequest_received_cap
 
     for house in range(NHOUSE):
         for tidx in range(life_time):
@@ -274,23 +309,26 @@ while bequest_err > crit and maxit > cit:
             if tidx < work_time:  # working people
                 state = approx_income_idx[house, tidx]
                 implied_coh = implied_cash_on_hand[:, state, tidx]
-                interpolate_f = interpolate.interp1d(implied_coh, implied_consum_arr[:, state, tidx],
-                                                     fill_value="extrapolate", kind="linear")
-                simu_consum[house, tidx] = interpolate_f(this_cash_on_hand)
             else:
+                state = 0
                 implied_coh = implied_cash_on_hand[:, 0, tidx]
-                interpolate_f = interpolate.interp1d(implied_coh, implied_consum_arr[:, 0, tidx],
-                                                     fill_value="extrapolate", kind="linear")
-                simu_consum[house, tidx] = interpolate_f(this_cash_on_hand)
+            if tidx == life_time - 1 and phi1 == 0:
+                simu_bequest_sent[house] = 0
+                simu_consum[house, tidx] = this_cash_on_hand
+                continue
+            # interping consumption decisions
+            try:
+                simu_consum[house, tidx] = np.interp(this_cash_on_hand, implied_coh, implied_consum_arr[:, state, tidx])
+            except ValueError:
+                 interpolate_f = interpolate.interp1d(implied_coh, implied_consum_arr[:, state, tidx],
+                                                      fill_value="extrapolate", kind="linear")
+                 simu_consum[house, tidx] = interpolate_f(this_cash_on_hand)
+
             #  The second condition is when extrapolation kind of do a problematic job
             if simu_consum[house, tidx] > this_cash_on_hand or simu_consum[house, tidx] <= 0:
                 simu_consum[house, tidx] = this_cash_on_hand
             if tidx == life_time - 1:
-                if phi1 != 0:
-                    simu_bequest_sent[house] = net_tax * (this_cash_on_hand - simu_consum[house, tidx])
-                else:
-                    simu_bequest_sent[house] = 0
-                    simu_consum[house, tidx] = this_cash_on_hand
+                simu_bequest_sent[house] = net_tax * (this_cash_on_hand - simu_consum[house, tidx])
                 continue  # no asset holding in last period
             simu_asset[house, tidx + 1] = interest * (this_cash_on_hand - simu_consum[house, tidx])
 
@@ -308,7 +346,9 @@ while bequest_err > crit and maxit > cit:
     # bequest_err = 0  # for now
     ratio = 0
     bequest_params[:] = ratio * bequest_params[:] + (1 - ratio) * new_bequest_params
-
+    end = time()
+    print("after sim Elapse time is {}".format(end - simstart))
+    print("=======================================================")
     cit += 1
 
     # report values and graphs
@@ -342,28 +382,12 @@ while bequest_err > crit and maxit > cit:
                 this_asset = this_asset[:-5]
             else:
                 this_asset = np.sort(simu_asset[:, tidx])
-                # avoid outliners ruining the graph, cut out last 20 people
-                this_asset = this_asset[:-5]
-            # this_cumsum = np.cumsum(this_asset)
-            # print(this_cumsum[-10:], "cumsum", len(this_cumsum))
-            # this_degree = np.linspace(0, np.sum(this_asset), NHOUSE)
-            # print(this_degree[-10:], "degree", this_cumsum[-1])
-            # print("================")
+
             # this_gini = 0
-            # this_area = ((this_cumsum[-1])**2)/2
-            # for idx in range(1, len(this_asset)):
-            #
-            #     if this_degree[idx] > this_asset[idx]:
-            #         this_gini += 1- this_cumsum[idx]/this_degree[idx]
-            # if this_degree[-1] == 0:
-            #     gini_arr[tidx] = 0
-            #     continue
-            # gini_arr[tidx] = this_gini/len(this_asset)
-            # from wiki
-            this_gini = 0
-            for i in range(len(this_asset)):
-                for j in range(len(this_asset)):
-                    this_gini += abs(this_asset[i]-this_asset[j])
+            # for i, i_asset in enumerate(this_asset):
+            #     for j, j_asset in enumerate(this_asset):
+            #         this_gini += abs(i_asset-j_asset)
+            this_gini = get_this_gini(this_asset)
             gini_arr[tidx] = this_gini/2/NHOUSE/NHOUSE/np.mean(this_asset)
             # share of wealth held by 20, 5, 1
             this_sum = np.sum(this_asset)
@@ -371,6 +395,9 @@ while bequest_err > crit and maxit > cit:
             wealth_5[tidx] = np.sum(this_asset[this_asset>=np.quantile(this_asset, 0.95)])/this_sum
             wealth_1[tidx] = np.sum(this_asset[this_asset>=np.quantile(this_asset, 0.99)])/this_sum
 
+        end = time()
+        print("Elapse time is {}".format(end-start))
+        print("=======================================================")
         start_age = 25
         x_val = np.arange(start_age, start_age + life_time, step=1)
         f_dict = {"consumption": avg_consum, "income": avg_income, "asset": avg_asset, "gini": gini_arr}
@@ -413,4 +440,4 @@ while bequest_err > crit and maxit > cit:
         plt.title(fname)
 
 
-plt.show()
+# plt.show()
