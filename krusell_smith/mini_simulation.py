@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 T = 2000
 NZ = 2
 delta = .06
-rng = np.random.default_rng()
+rng = np.random.default_rng(1000)
 amarkov = np.genfromtxt("../krusell_smith/input/amarkov.txt")
 states = np.array([.9832, 1.0157])
 agg_c = np.zeros(T)
@@ -171,6 +171,6 @@ for idx, it in enumerate([agg_c, agg_i, agg_k, agg_y]):
     plt.tight_layout()
     plt.subplots_adjust(top=0.88)
     plt.legend()
-    plt.savefig('data_output/{}.png'.format(fname))
+    # plt.savefig('data_output/{}.png'.format(fname))
 
 plt.show()

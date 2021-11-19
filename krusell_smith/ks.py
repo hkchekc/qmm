@@ -1,9 +1,7 @@
-import numpy as np
-import scipy as sp
 from ks_util import *
 from time import time
 
-start = time()
+big_start = time()
 p = param()
 r = res()
 
@@ -22,6 +20,6 @@ while r.error < 0.98:
     print("Elapse time is {} s".format(end-start))
 
 end = time()
-print("Elapse time is {} s".format(end-start))
+print("Elapse time is {} s".format(end-big_start))
 
 

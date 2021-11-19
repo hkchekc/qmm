@@ -26,7 +26,7 @@ MODULE KSPARAM
             ! UNRELATED TO INDIVIDUAL PROBLEMS
             DO AKIDX=1, NAK
                 DO ZIDX=1, NZ
-                    NORM_K = AK_GRID(AKIDX) 
+                    NORM_K = AK_GRID(AKIDX)
                     INTEREST(AKIDX, ZIDX) = ALPHA*PROD_SHOCK(ZIDX)*(NORM_K**(ALPHA-1.))
                     WAGE(AKIDX, ZIDX) = (1.-ALPHA)*PROD_SHOCK(ZIDX)*(NORM_K**ALPHA)
                 ENDDO
