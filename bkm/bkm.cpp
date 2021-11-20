@@ -86,16 +86,16 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
         for (size_t aidx=0; aidx<p.NA; ++aidx){
             br.implied_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx);
             br.implied_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
-            br.exo_consum_arr(aidx, zidx) = r.consum_arr(aidx, zidx);
-            br.exo_cash_on_hand(aidx, zidx) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
+            br.exo_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx);
+            br.exo_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
             br.pfunc(aidx, get_3d_index(zidx, bp.TIME-1)) = r.pfunc(aidx, zidx);
+            // for some reason coh -consum  != k_grid[pol] ~.04 off
         }
     }
-    
     for (size_t last_zidx=0; last_zidx<p.NZ; ++last_zidx){
         for (size_t aidx=0; aidx<p.NA; ++aidx){
             // this_val = p.interest/pow(br.exo_consum_arr(aidx, last_zidx), p.gamma);
-            this_val = p.interest/br.exo_consum_arr(aidx, last_zidx)/br.exo_consum_arr(aidx, last_zidx); // for gamma =2
+            this_val = p.interest/pow(br.exo_consum_arr(aidx, get_3d_index(last_zidx, bp.TIME-1)), p.gamma); // for gamma =2
             // cout << this_val << "\n";
             for (size_t zidx=0; zidx<p.NZ; ++zidx){
                 br.expected_vprime(aidx, zidx) += p.markov(zidx, last_zidx)* this_val;
@@ -114,14 +114,14 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
                 br.implied_consum_arr(aidx, second_index) = pow(r.beta*br.expected_vprime(aidx, zidx), -1./p.gamma);
                 br.implied_cash_on_hand(aidx, second_index) = br.implied_consum_arr(aidx, second_index) + p.a_grid[aidx];
                 // actually the aidx here is a_now and above is a', but I just conveniently put it in 1 loop
-                br.exo_cash_on_hand(aidx, zidx) = p.states[zidx]*br.wage_path(tidx) + br.r_path(tidx)*p.a_grid[aidx];  
+                br.exo_cash_on_hand(aidx, second_index) = p.states[zidx]*br.wage_path(tidx) + br.r_path(tidx)*p.a_grid[aidx];  
             }
 
 
         // cout << br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array();
             // check where cash constraint is binding
             bkm::interp_linear(br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array(),
-             br.implied_consum_arr.block(0, second_index, p.NA, 1).array(), br, p, zidx);
+             br.implied_consum_arr.block(0, second_index, p.NA, 1).array(), br, p, second_index);
 
             bkm::get_pfunc(p, br, zidx, tidx);
         }
@@ -130,7 +130,7 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
         br.expected_vprime = MatrixXd::Zero(p.NA, p.NZ);
         for (size_t last_zidx=0; last_zidx<p.NZ; ++last_zidx){
             for (size_t aidx=0; aidx<p.NA; ++aidx){
-                this_val = br.r_path(tidx)/pow(br.exo_consum_arr(aidx, last_zidx), p.gamma);
+                this_val = br.r_path(tidx)/pow(br.exo_consum_arr(aidx, get_3d_index(last_zidx, tidx)), p.gamma);
                 for (size_t zidx=0; zidx<p.NZ; ++zidx){
                     br.expected_vprime(aidx, zidx) += p.markov(zidx, last_zidx)* this_val;
                 } 
@@ -145,11 +145,11 @@ void bkm::get_pfunc(const PARAM p, BKM_RES &br, const size_t zidx, const size_t 
     double a_prime; // to find policy
     int tmp_floor, tmp_ceil; // policy
     for (size_t aidx=0; aidx<p.NA; ++aidx){
-        if (br.exo_cash_on_hand(aidx, zidx) < this_constraint){
-            br.exo_consum_arr(aidx, zidx) = br.exo_cash_on_hand(aidx, zidx); 
+        if (br.exo_cash_on_hand(aidx, second_index) < this_constraint){
+            br.exo_consum_arr(aidx, second_index) = br.exo_cash_on_hand(aidx, second_index); 
             br.pfunc(aidx, second_index) = (int)0;
         } else{
-            a_prime = br.exo_cash_on_hand(aidx, zidx) - br.exo_consum_arr(aidx, zidx); // by budget constraint
+            a_prime = br.exo_cash_on_hand(aidx, second_index) - br.exo_consum_arr(aidx, second_index); // by budget constraint
             tmp_floor = std::floor((a_prime - p.a_min)/p.a_inc); // I think it must always be in grid
             tmp_ceil = std::ceil((a_prime - p.a_min)/p.a_inc); 
             if ( std::abs(a_prime-p.a_grid[tmp_floor])> std::abs(a_prime-p.a_grid[tmp_ceil]) ){
@@ -163,6 +163,11 @@ void bkm::get_pfunc(const PARAM p, BKM_RES &br, const size_t zidx, const size_t 
             }
         }
     }
+}
+
+void bkm::youngs_dist(){
+    // use youngs method to get distribution
+
 }
 
 void bkm::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, BKM_RES &br, const PARAM p, size_t zi){
@@ -186,14 +191,15 @@ void bkm::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, BKM_RES &br, c
 
 void bkm::simulate_dist(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
     // dist_path - dim: (NA*NZ, NT)
-    bkm_r.dist_path.col(0) = r.stat_dist;
+    bkm_r.new_dist_path.col(0) = r.stat_dist;
     for (size_t tidx= 1; tidx< bkm_p.TIME; ++tidx){
         Eigen::MatrixXi last_policy = bkm_r.pfunc.block(0, get_3d_index(0, tidx), p.NA, p.NZ); 
         MatrixXd last_a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
         aiyagari::get_a_change_mat(last_a_mat , last_policy, p);
-        MatrixXd last_dist = bkm_r.dist_path.col(tidx-1);
-        bkm_r.dist_path.col(tidx) = last_a_mat*last_dist; 
+        MatrixXd last_dist = bkm_r.new_dist_path.col(tidx-1);
+        bkm_r.new_dist_path.col(tidx) = last_a_mat*last_dist; 
     }
+
 }
 
 void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
@@ -207,7 +213,7 @@ void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PA
             this_a_dist = 0;
             for (size_t zidx= 0; zidx< p.NZ; ++zidx){
                 index = zidx*p.NA+aidx;
-                this_a_dist += bkm_r.dist_path(index, tidx);
+                this_a_dist += bkm_r.new_dist_path(index, tidx);
             }
             bkm_r.new_ak_path(tidx, 0) += this_a_dist*p.a_grid[aidx];
         }
@@ -245,6 +251,10 @@ void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp){
     	MatrixXd abs_diff = bkm_r.new_r_path - bkm_r.r_path;
 		bkm_r.path_err = std::max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
         // bkm_r.path_err = std::abs(p.interest - bkm_r.new_r_path(bp.TIME-1));
+        // MatrixXd abs_diff = bkm_r.dist_path - bkm_r.new_dist_path;
+        // bkm_r.path_err = abs_diff.cwiseAbs().sum();
+    
+        bkm_r.dist_path = bkm_r.new_dist_path;
         double ratio = 0.9;
         bkm_r.r_path = (1.-ratio)*bkm_r.new_r_path+ratio*bkm_r.r_path;
         bkm_r.ak_path = bkm_r.new_ak_path;

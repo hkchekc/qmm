@@ -25,7 +25,7 @@ for arr in arr_li:
 
 ngraph = len(arr_li) -1  # a grid is x axis
 
-drop = 1
+drop = 50
 
 for idx, it in enumerate(arr_li):
     if 'path' not in it or 'dist' in it or 'png' in it:

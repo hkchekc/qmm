@@ -29,10 +29,10 @@ agg_k[0] = kss
 
 
 def ks_forcast(good, current_k):
-    slope_g =0.98161517
-    slope_b =0.93973632
-    inter_g = 0.02306467
-    inter_b = 0.07518812
+    slope_g =0.91772906
+    slope_b =0.93611402
+    inter_g = 0.11780762
+    inter_b = 0.09135248
     if good:
         return np.exp(np.log(current_k) * slope_g + inter_g)  # log normalized
     else:

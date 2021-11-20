@@ -23,8 +23,8 @@ class param:
         self.DROP = 20
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
-        self.NK = 150
-        self.NAK = 10
+        self.NK = 250
+        self.NAK = 25
         self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
         self.markov = np.genfromtxt("input/markov.txt")
@@ -51,7 +51,8 @@ class res:
         self.wage = np.zeros((p.NAK, p.NZ))
         self.vfunc = None
         self.pfunc = None
-        self.error = 0.
+        self.error = 100.
+        self.rsq = 0.
         self.sim_ak = np.zeros(p.NT)
         self.sim_small_k = np.zeros([p.NT, p.NH])
         self.count_good = 0
@@ -122,26 +123,27 @@ def calc_errors(p, r):
     tmp_idx += 1
     bad_next_ak = r.sim_ak[tmp_idx]
     r.error = 0
+    # ols
     good_x = api.add_constant(np.log(good_ak))
     model_good = api.OLS(np.log(good_next_ak), good_x)
     results = model_good.fit()
-    r.error = results.rsquared
-    # r.error = abs(results.params[1] - r.slope[1])
+    r.rsq = results.rsquared
+    r.error = abs(results.params[1] - r.slope[1])
     ratio = 1
     r.slope[1] = ratio*results.params[1]+(1-ratio)*r.slope[1]
     r.intercept[1] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
-    r.error = max(results.rsquared, r.error)
+    # same thing for bad
     bad_x = api.add_constant(np.log(bad_ak))
     model_bad = api.OLS(np.log(bad_next_ak), bad_x)
     results = model_bad.fit()
-    bad_rsq = results.rsquared
+    r.rsq = max(results.rsquared, r.rsq)
+    r.error = max(r.error, abs(results.params[1] - r.slope[0]))
 
     r.slope[0] = ratio*results.params[1]+(1-ratio)*r.slope[0]
     r.intercept[0] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
-    # r.error = max(r.error, abs(results.params[1] - r.slope[0]))
     print("bad/good intercepts -> ",r.intercept)
     print("bad/good slopes -> ",r.slope)
-    print("r_squares", r.error)
+    print("error_param, r_squares", r.error, r.rsq)
 
 
 def _est_agg_cap(ak_grid, NAK, NZ, intercept, slope):
@@ -197,6 +199,9 @@ def _construct_next_vfunc_tmp(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NA
 
     return util_arr + beta*exp_next_u  # 5 dimensional object
 
+@njit
+def _contstruct_tmr_vfunc():
+    tmr_vfunc = 0
 
 def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
     for tidx in range(1, net_time):

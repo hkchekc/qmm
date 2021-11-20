@@ -8,7 +8,7 @@ r = res()
 init_shocks(p, r)
 get_prices(p, r)
 
-while r.error < 0.98:
+while r.rsq < 0.98 or r.error > 1e-5:
     start = time()
 
     vfi(p, r)
