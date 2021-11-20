@@ -87,10 +87,11 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
             br.implied_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx);
             br.implied_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
             br.exo_consum_arr(aidx, zidx) = r.consum_arr(aidx, zidx);
-            br.exo_cash_on_hand(aidx, zidx) = br.implied_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1));
+            br.exo_cash_on_hand(aidx, zidx) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
+            br.pfunc(aidx, get_3d_index(zidx, bp.TIME-1)) = r.pfunc(aidx, zidx);
         }
-        bkm::get_pfunc(p, br, zidx, bp.TIME-1);
     }
+    
     for (size_t last_zidx=0; last_zidx<p.NZ; ++last_zidx){
         for (size_t aidx=0; aidx<p.NA; ++aidx){
             // this_val = p.interest/pow(br.exo_consum_arr(aidx, last_zidx), p.gamma);
@@ -118,10 +119,10 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
 
 
         // cout << br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array();
+            // check where cash constraint is binding
             bkm::interp_linear(br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array(),
              br.implied_consum_arr.block(0, second_index, p.NA, 1).array(), br, p, zidx);
 
-            // check where cash constraint is binding
             bkm::get_pfunc(p, br, zidx, tidx);
         }
 
@@ -215,7 +216,7 @@ void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PA
             bkm_r.new_ak_path(tidx, 0) = .1;
         }
         // can calculate when things converge
-        bkm_r.agg_output_path(tidx, 0) = pow(bkm_r.new_ak_path(tidx, 0), p.alpha);
+        bkm_r.agg_output_path(tidx, 0) = bkm_r.productivity(tidx)*pow(bkm_r.new_ak_path(tidx, 0), p.alpha);
         if (tidx != 0){
             bkm_r.agg_invest_path(tidx, 0) = (bkm_r.new_ak_path(tidx, 0)- bkm_r.new_ak_path(tidx-1, 0))+p.delta*bkm_r.new_ak_path(tidx-1, 0);
         } else{

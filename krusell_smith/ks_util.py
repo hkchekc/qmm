@@ -8,23 +8,23 @@ class param:
 
     def __init__(self):
         self.rng = random.default_rng(seed=5000)
-        self.beta = .917493
+        self.beta = .91745
         self.gamma = 2.
         self.alpha = 0.36
         self.delta = .06
-        self.k_max = 15.01
-        self.k_min = 0.01
-        self.ak_max = 15.01
-        self.ak_min = 0.01
+        self.k_max = 24.
+        self.k_min = 0.
+        self.ak_max = 8.3716
+        self.ak_min = 2.0929
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
-        self.agg_states = np.array([.984569568887006, 1.01713588246477])
-        self.NH = 400
-        self.NT = 5000
+        self.agg_states = np.array([.9832, 1.0157])
+        self.NH = 1000
+        self.NT = 1500
         self.DROP = 20
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
-        self.NK = 200
-        self.NAK = 20
+        self.NK = 150
+        self.NAK = 10
         self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
         self.markov = np.genfromtxt("input/markov.txt")
@@ -45,10 +45,10 @@ class res:
     def __init__(self):
         # initial guess
         p = param()
-        self.intercept = np.array([-0.005, 0.15])
-        self.slope = np.array([.84, 0.95])
-        self.interst =  np.zeros((p.NAK, p.NZ))
-        self.wage =  np.zeros((p.NAK, p.NZ))
+        self.intercept = np.array([0.11, 0.11])
+        self.slope = np.array([.9, 0.9])
+        self.interest = np.zeros((p.NAK, p.NZ))
+        self.wage = np.zeros((p.NAK, p.NZ))
         self.vfunc = None
         self.pfunc = None
         self.error = 0.
@@ -71,7 +71,7 @@ def init_shocks(p, r):
     # randomize initial period capital endowment
     r.sim_small_k[0, :] = p.rng.choice(p.k_grid, size=p.NH)
     r.sim_ak[0] = np.mean(r.sim_small_k[0, :])
-    print(r.sim_ak[0], "===========================")
+    # print(r.sim_ak[0], "===========================")
 
 def get_prices(p, r):
     r.interest, r.wage = _get_prices(p.ak_grid, p.agg_states, p.NAK, p.NZ, p.alpha, p.delta)
@@ -87,7 +87,7 @@ def _get_prices(ak_grid, zgrid, NAK, NZ, alpha, delta):
     return interest, wage
 
 def vfi(p, r):
-    ak_est = _est_agg_cap(p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, r.intercept, r.slope)
+    ak_est = _est_agg_cap(p.ak_grid, p.NAK, p.NZ, r.intercept, r.slope)
     coh_arr = _get_coh(p.NK, p.NY, p.NAK, p.NZ, r.interest, p.ind_states, p.k_grid, r.wage)
     consum_arr, util_arr = _get_consum_arr(p.NK, p.NY, p.NAK, p.NZ, coh_arr, p.k_grid, p.gamma)
 
@@ -96,7 +96,9 @@ def vfi(p, r):
     r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int8)
     while err_vfi > p.vfi_crit:
         err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, p.markov)
-        print(err_vfi)
+        # print(err_vfi)
+    print(p.k_grid[r.pfunc[0,0,0,0]])
+    print(p.k_grid[r.pfunc[-1,-1,-1,-1]])
 
 def pseudo_panel(p, r):
     net_time = p.NT - p.DROP
@@ -124,10 +126,11 @@ def calc_errors(p, r):
     model_good = api.OLS(np.log(good_next_ak), good_x)
     results = model_good.fit()
     r.error = results.rsquared
+    # r.error = abs(results.params[1] - r.slope[1])
     ratio = 1
     r.slope[1] = ratio*results.params[1]+(1-ratio)*r.slope[1]
     r.intercept[1] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
-    r.error = results.rsquared
+    r.error = max(results.rsquared, r.error)
     bad_x = api.add_constant(np.log(bad_ak))
     model_bad = api.OLS(np.log(bad_next_ak), bad_x)
     results = model_bad.fit()
@@ -135,17 +138,17 @@ def calc_errors(p, r):
 
     r.slope[0] = ratio*results.params[1]+(1-ratio)*r.slope[0]
     r.intercept[0] = ratio*results.params[0]+(1-ratio)*r.intercept[0]
-    r.error = max(bad_rsq, r.error)
+    # r.error = max(r.error, abs(results.params[1] - r.slope[0]))
     print("bad/good intercepts -> ",r.intercept)
     print("bad/good slopes -> ",r.slope)
     print("r_squares", r.error)
 
 
-def _est_agg_cap(ak_grid, NK, NY, NAK, NZ, intercept, slope):
-    next_ak = np.zeros((NK, NY, NAK, NZ))
+def _est_agg_cap(ak_grid, NAK, NZ, intercept, slope):
+    next_ak = np.zeros((NAK, NZ))
     for aki in range(NAK):
         for zi in range(NZ):
-            next_ak[:, :, aki, zi] = np.exp(intercept[zi]+slope[zi]*np.log(ak_grid[aki]))
+            next_ak[aki, zi] = np.exp(intercept[zi]+slope[zi]*np.log(ak_grid[aki]))
     mx = next_ak < ak_grid[0]
     next_ak[mx] = ak_grid[0]
     mx = next_ak > ak_grid[-1]
@@ -165,7 +168,7 @@ def  _get_consum_arr(NK, NY, NAK, NZ, coh_arr, k_grid, gamma):
     consum_arr = np.zeros((NK, NY, NAK, NZ, NK))
     for ki, k in enumerate(k_grid):
         consum_arr[:, :, :, :, ki] = coh_arr - k
-    util_arr = np.ones((NK, NY, NAK, NZ, NK)) * -1e-3
+    util_arr = np.ones((NK, NY, NAK, NZ, NK)) * -1e3
     mx = consum_arr > 0
     util_arr[mx] = (np.power(consum_arr[mx], 1-gamma) -1.)/(1-gamma)
     return consum_arr, util_arr
@@ -180,18 +183,20 @@ def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
 @njit
 def _construct_next_vfunc_tmp(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
     exp_next_u = np.zeros((NK, NY, NAK, NZ, NK))
-    for zi in range(NZ):
-        for yi in range(NY):
-            this_idx = zi*NY +yi
+    for nzi in range(NZ):
+        for nyi in range(NY):
+            next_idx = nzi * NY + nyi
             for kpi in range(NK):
+                tmp_arr = np.interp(ak_est, ak_grid, vfunc[kpi, nyi, :, nzi])
                 for aki in range(NAK):
-                    for nzi in range(NZ):
-                        for nyi in range(NY):
-                            next_idx = nzi*NY +nyi
-                            exp_next_u[:, yi, aki, zi, kpi] += markov[this_idx,
-                                        next_idx]*np.interp(ak_est[0, yi, aki, zi], ak_grid, vfunc[kpi, nyi, :, nzi])
+                    for zi in range(NZ):
+                        tmp = tmp_arr[aki, zi]
+                        for yi in range(NY):
+                            this_idx = zi * NY + yi
+                            exp_next_u[:, yi, aki, zi, kpi] += markov[this_idx, next_idx]*tmp
 
     return util_arr + beta*exp_next_u  # 5 dimensional object
+
 
 def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
     for tidx in range(1, net_time):
@@ -201,6 +206,9 @@ def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision
             interpolate_f = interpolate.interp2d(ak_grid, k_grid, k_decision[:, yi, :, zi], kind="linear")
             mx = ind_shock[tidx-1, :] == yi
             last_small_k = sim_small_k[tidx - 1, :][mx]
-            sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
+            try:
+                sim_small_k[tidx, :][mx] = interpolate_f(last_small_k, last_ak)
+            except ValueError:
+                print(sim_small_k[tidx, :][mx], tidx)
         sim_ak[tidx] = np.mean(sim_small_k[tidx, :])
     return sim_ak, sim_small_k

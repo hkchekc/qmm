@@ -1,7 +1,7 @@
 N = 2;
 sigma = .012;
 rho = .9;
-mu = sigma^2/2/(1-rho);
+mu = -sigma^2/2/(1-rho);
 w = 0.5 + rho/4;
 sigmaZ = sigma/sqrt(1-rho^2);
 baseSigma = w*sigma+(1-w)*sigmaZ;

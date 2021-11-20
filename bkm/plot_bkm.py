@@ -6,7 +6,13 @@ import sys
 # usage: python3 plot.py directory_intended
 dir = ""
 
-
+# one = np.genfromtxt("./data_output/dist_path.txt")
+#
+# abs_diff = np.abs(one[:, 0]-one[:, -50])
+# max_diff = np.max(abs_diff)
+# print(max_diff)
+# print(*one[2000:2200, 0])
+# raise ValueError
 # don't have to change
 data_dir = "data_output"
 dpath = os.path.join(dir, data_dir)
@@ -19,14 +25,14 @@ for arr in arr_li:
 
 ngraph = len(arr_li) -1  # a grid is x axis
 
-
+drop = 1
 
 for idx, it in enumerate(arr_li):
     if 'path' not in it or 'dist' in it or 'png' in it:
         continue
     fig  = plt.figure(idx)
     fig.canvas.set_window_title(it)
-    plt.plot(range(200), f_dict[it])
+    plt.plot(range(200)[:-drop], np.log(f_dict[it])[:-drop])
     plt.legend()
     fname = '{}'.format(it)
     plt.suptitle(fname)
