@@ -18,7 +18,7 @@ class param:
         self.ak_min = 2.0929
         self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
         self.agg_states = np.array([.9832, 1.0157])
-        self.NH = 1000
+        self.NH = 3000
         self.NT = 1500
         self.DROP = 20
         self.NZ = self.agg_states.size
@@ -65,14 +65,19 @@ def init_shocks(p, r):
     p.ind_shocks[0, :] = p.rng.choice(range(p.NY), p.NH)
     for tidx in range(1, p. NT):
         p.agg_shocks[tidx] = p.rng.choice(range(p.NZ), p=p.amarkov[p.agg_shocks[tidx-1], :])
-        for hidx in range(p.NH):
-            p.ind_shocks[tidx, hidx] = p.rng.choice(range(p.NY), p=p.ymarkov[p.ind_shocks[tidx-1, hidx], :])
+        for yidx in range(p.NY):
+            mx = p.ind_shocks[tidx-1, :] == yidx
+            count = np.sum(mx)
+            p.ind_shocks[tidx, :][mx] = p.rng.choice(range(p.NY), count,p=p.ymarkov[yidx, :])
+        # for hidx in range(p.NH):
+        #     p.ind_shocks[tidx, hidx] = p.rng.choice(range(p.NY), p=p.ymarkov[p.ind_shocks[tidx-1, hidx], :])
     p.agg_shocks = p.agg_shocks[p.DROP:]
     p.ind_shocks = p.ind_shocks[p.DROP:, :]
     # randomize initial period capital endowment
     r.sim_small_k[0, :] = p.rng.choice(p.k_grid, size=p.NH)
     r.sim_ak[0] = np.mean(r.sim_small_k[0, :])
     # print(r.sim_ak[0], "===========================")
+    # print(p.ind_shocks[-1, :] == 0)
 
 def get_prices(p, r):
     r.interest, r.wage = _get_prices(p.ak_grid, p.agg_states, p.NAK, p.NZ, p.alpha, p.delta)

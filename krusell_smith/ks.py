@@ -12,8 +12,6 @@ while r.rsq < 0.98 or r.error > 1e-5:
     start = time()
 
     vfi(p, r)
-    # print(r.pfunc[])
-    # print(r.pfunc[])
     pseudo_panel(p, r)
     calc_errors(p, r)
     end = time()
