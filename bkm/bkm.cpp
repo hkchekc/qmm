@@ -63,11 +63,12 @@ void bkm::run_aiyagari(RESULT &r ,PARAM &p){
 	cout << r.beta << "final beta \n";
 }
 
-void bkm::init_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
+void bkm::init_path(const PARAM p, const RESULT r, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
     // initialize a guess path for r, store in BKM_RES
     double deviation = bkm_p.shock/10.; // a guess on what is the first period interest rate (after shock)
     // or maybe better with loop let's see
     bkm_r.r_path.col(0).setLinSpaced(bkm_p.TIME, p.interest+deviation, p.interest);
+    bkm_r.wage_path.col(0).setLinSpaced(bkm_p.TIME, r.this_wage+deviation, r.this_wage);
 }
 
 size_t bkm::get_3d_index(const size_t zidx, const size_t tidx){
@@ -78,23 +79,34 @@ size_t bkm::get_3d_index(const size_t zidx, const size_t tidx){
 }
 
 void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
-    double this_val;
+    double this_val, this_constraint;
     // last period
     		cout << "start with egm \n";
     	cout << "=============================== \n";
     for (size_t zidx=0; zidx<p.NZ; ++zidx){
         for (size_t aidx=0; aidx<p.NA; ++aidx){
             br.implied_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx);
+            // br.implied_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx) + p.a_grid[aidx]; 
             br.implied_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
             br.exo_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = r.consum_arr(aidx, zidx);
             br.exo_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1)) = p.interest*p.a_grid[aidx]+ r.this_wage*p.states[zidx];
-            br.pfunc(aidx, get_3d_index(zidx, bp.TIME-1)) = r.pfunc(aidx, zidx);
+            // br.pfunc(aidx, get_3d_index(zidx, bp.TIME-1)) = r.pfunc(aidx, zidx);
             // for some reason coh -consum  != k_grid[pol] ~.04 off
         }
+        this_constraint = br.implied_cash_on_hand(0, get_3d_index(zidx, bp.TIME-1));
+        // bkm::interp_linear(br.implied_cash_on_hand.block(0, get_3d_index(zidx, bp.TIME-1), p.NA, 1).array(),
+        // br.implied_consum_arr.block(0, get_3d_index(zidx, bp.TIME-1), p.NA, 1).array(), br, p, get_3d_index(zidx, bp.TIME-1));
+        for (size_t aidx=0; aidx<p.NA; ++aidx){
+            if (br.exo_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1))< this_constraint){
+                br.exo_consum_arr(aidx, get_3d_index(zidx, bp.TIME-1)) = br.exo_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1));
+            }
+            br.pfunc(aidx, get_3d_index(zidx, bp.TIME-1)) = r.pfunc(aidx, zidx);
+        }
+        // bkm::get_pfunc(p, br, zidx, bp.TIME-1);
     }
+    br.expected_vprime = MatrixXd::Zero(p.NA, p.NZ);
     for (size_t last_zidx=0; last_zidx<p.NZ; ++last_zidx){
         for (size_t aidx=0; aidx<p.NA; ++aidx){
-            // this_val = p.interest/pow(br.exo_consum_arr(aidx, last_zidx), p.gamma);
             this_val = p.interest/pow(br.exo_consum_arr(aidx, get_3d_index(last_zidx, bp.TIME-1)), p.gamma); // for gamma =2
             // cout << this_val << "\n";
             for (size_t zidx=0; zidx<p.NZ; ++zidx){
@@ -116,13 +128,15 @@ void bkm::egm(const RESULT r, const PARAM p, BKM_RES &br, const BKM_PARAM bp){
                 // actually the aidx here is a_now and above is a', but I just conveniently put it in 1 loop
                 br.exo_cash_on_hand(aidx, second_index) = p.states[zidx]*br.wage_path(tidx) + br.r_path(tidx)*p.a_grid[aidx];  
             }
-
-
-        // cout << br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array();
+            this_constraint = br.implied_cash_on_hand(0, second_index);
             // check where cash constraint is binding
             bkm::interp_linear(br.implied_cash_on_hand.block(0, second_index, p.NA, 1).array(),
              br.implied_consum_arr.block(0, second_index, p.NA, 1).array(), br, p, second_index);
-
+            for (size_t aidx=0; aidx<p.NA; ++aidx){
+            if (br.exo_cash_on_hand(aidx, second_index)< this_constraint){
+                br.exo_consum_arr(aidx, second_index) = br.exo_cash_on_hand(aidx, get_3d_index(zidx, bp.TIME-1));
+            }
+        }
             bkm::get_pfunc(p, br, zidx, tidx);
         }
 
@@ -165,8 +179,76 @@ void bkm::get_pfunc(const PARAM p, BKM_RES &br, const size_t zidx, const size_t 
     }
 }
 
-void bkm::youngs_dist(){
+MatrixXd bkm::youngs_dist(const PARAM p, const BKM_RES br, const size_t tidx){
     // use youngs method to get distribution
+    // this consum
+    MatrixXd a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
+    MatrixXd this_consum_arr, this_coh, this_a_prime, this_aprime_pos, this_mod;
+    size_t second_index = get_3d_index(0, tidx);
+    this_consum_arr = br.exo_consum_arr.block(0, second_index, p.NA, p.NZ);
+    this_coh = br.exo_cash_on_hand.block(0, second_index, p.NA, p.NZ);
+    this_a_prime = this_coh - this_consum_arr;
+    this_aprime_pos = (this_a_prime.array() - p.a_min)/p.a_inc; 
+    Eigen::MatrixXi pol_floor = Eigen::MatrixXi(p.NA, p.NZ), pol_ceil = Eigen::MatrixXi(p.NA, p.NZ);
+        // cout << "util here \n";
+    // # pragma omp parallel for
+    for (size_t aidx=0; aidx<p.NA; ++aidx){
+        for (size_t zidx=0; zidx<p.NZ; ++zidx){
+            // this_mod(aidx, zidx) = this_aprime_pos(aidx, zidx) % 1.;
+            // pol_floor(aidx, zidx) = std::floor(this_aprime_pos(aidx, zidx));
+            // pol_ceil(aidx, zidx) = std::ceil(this_aprime_pos(aidx, zidx));
+            cout << this_aprime_pos(aidx, zidx)  << "break\n";
+            int int_ver = (int)this_aprime_pos(aidx, zidx);
+            pol_floor(aidx, zidx) = int_ver - (int_ver > this_aprime_pos(aidx, zidx) );
+            pol_ceil(aidx, zidx) = int_ver + (int_ver < this_aprime_pos(aidx, zidx) );
+        }
+    }
+    // # pragma omp parallel for
+    for (size_t aidx=0; aidx<p.NA; ++aidx){
+        for (size_t zidx=0; zidx<p.NZ; ++zidx){
+
+            // catch out of bounds
+            if (pol_ceil(aidx, zidx) == p.NA){
+                pol_ceil(aidx, zidx) = p.NA -1; 
+            }
+            if (pol_ceil(aidx, zidx) > p.NA){
+                cout << "";
+                pol_ceil(aidx, zidx) = p.NA -1; 
+                pol_floor(aidx, zidx) =  p.NA -1; 
+            }
+        }
+    }
+    // cout << "break\n";
+    this_mod = this_aprime_pos - pol_floor.cast<double>();
+    MatrixXd change_mat_floor=MatrixXd(p.NA*p.NZ, p.NA*p.NZ), change_mat_ceil=MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
+    cout << pol_ceil.size() << "    " << change_mat_ceil.size() << " vor change mat \n";
+    aiyagari::get_a_change_mat(change_mat_floor, pol_floor, p);
+        // cout << " after resize1 \n";
+    aiyagari::get_a_change_mat(change_mat_ceil, pol_ceil, p);
+    // cout << " after resize2 \n";
+    
+    MatrixXd this_floor_weight = this_mod.replicate(9, 1); // wrong?
+    this_floor_weight.resize(p.NA*p.NZ, p.NA*p.NZ);
+    MatrixXd this_ceil_weight = (1.-this_floor_weight.array());
+    // cout << this_floor_weight.size() << "   "<<change_mat_ceil.size() <<"util here \n";
+    a_mat = this_floor_weight.cwiseProduct(change_mat_floor) + change_mat_ceil.cwiseProduct( this_ceil_weight);  // not same size
+    return a_mat;
+}
+
+void bkm::simulate_dist(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p, const bool young){
+    bkm_r.new_dist_path.col(0) = r.stat_dist;
+    for (size_t tidx= 1; tidx< bkm_p.TIME; ++tidx){
+        Eigen::MatrixXi last_policy = bkm_r.pfunc.block(0, get_3d_index(0, tidx), p.NA, p.NZ); 
+        MatrixXd last_a_mat;
+        if (!young){
+            last_a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
+            aiyagari::get_a_change_mat(last_a_mat , last_policy, p); 
+        } else {
+            last_a_mat = bkm::youngs_dist(p, bkm_r, tidx); 
+        }
+        MatrixXd last_dist = bkm_r.new_dist_path.col(tidx-1);
+        bkm_r.new_dist_path.col(tidx) = last_a_mat*last_dist; 
+    }
 
 }
 
@@ -189,19 +271,6 @@ void bkm::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, BKM_RES &br, c
 	gsl_interp_accel_free( accel_ptr );
 }
 
-void bkm::simulate_dist(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
-    // dist_path - dim: (NA*NZ, NT)
-    bkm_r.new_dist_path.col(0) = r.stat_dist;
-    for (size_t tidx= 1; tidx< bkm_p.TIME; ++tidx){
-        Eigen::MatrixXi last_policy = bkm_r.pfunc.block(0, get_3d_index(0, tidx), p.NA, p.NZ); 
-        MatrixXd last_a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
-        aiyagari::get_a_change_mat(last_a_mat , last_policy, p);
-        MatrixXd last_dist = bkm_r.new_dist_path.col(tidx-1);
-        bkm_r.new_dist_path.col(tidx) = last_a_mat*last_dist; 
-    }
-
-}
-
 void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p){
     // we ignore the income process and add up the amount of capital
     // get_agg_var_path
@@ -218,7 +287,7 @@ void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PA
             bkm_r.new_ak_path(tidx, 0) += this_a_dist*p.a_grid[aidx];
         }
         if (bkm_r.new_ak_path(tidx, 0)==0.){
-            cout << "abc \n";
+            // cout << "zero capital \n";
             bkm_r.new_ak_path(tidx, 0) = .1;
         }
         // can calculate when things converge
@@ -239,8 +308,8 @@ void bkm::get_implied_price_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM 
         bkm_r.new_r_path(tidx, 0) = 1.+p.alpha*bkm_r.productivity(tidx,0)/pow(bkm_r.new_ak_path(tidx, 0), (1.-p.alpha)) - p.delta;
         if ( !std::isfinite(bkm_r.new_r_path(tidx, 0)) ){
             bkm::write_all(bkm_r);
-            cout << tidx << "\n";
-            cout << bkm_r.new_ak_path(tidx) << bkm_r.new_r_path(tidx);
+            // cout << tidx << "\n";
+            // cout << bkm_r.new_ak_path(tidx) << bkm_r.new_r_path(tidx);
             throw std::invalid_argument( "received inf value" );
         }
     }
@@ -249,15 +318,20 @@ void bkm::get_implied_price_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM 
 
 void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp){
     	MatrixXd abs_diff = bkm_r.new_r_path - bkm_r.r_path;
+        // MatrixXd abs_diff = bkm_r.new_ak_path - bkm_r.ak_path;
 		bkm_r.path_err = std::max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
         // bkm_r.path_err = std::abs(p.interest - bkm_r.new_r_path(bp.TIME-1));
         // MatrixXd abs_diff = bkm_r.dist_path - bkm_r.new_dist_path;
         // bkm_r.path_err = abs_diff.cwiseAbs().sum();
     
         bkm_r.dist_path = bkm_r.new_dist_path;
-        double ratio = 0.9;
+        double ratio = 0.8;
         bkm_r.r_path = (1.-ratio)*bkm_r.new_r_path+ratio*bkm_r.r_path;
-        bkm_r.ak_path = bkm_r.new_ak_path;
+        bkm_r.ak_path = (1.-ratio)*bkm_r.new_ak_path+ratio*bkm_r.ak_path;
+        // for (size_t tidx= 0; tidx< bp.TIME; ++tidx){
+        // bkm_r.wage_path(tidx, 0) = (1-p.alpha)*bkm_r.productivity(tidx,0)*pow(bkm_r.ak_path(tidx, 0), p.alpha);
+        // bkm_r.new_r_path(tidx, 0) = 1.+p.alpha*bkm_r.productivity(tidx,0)/pow(bkm_r.ak_path(tidx, 0), (1.-p.alpha)) - p.delta;
+        // }
 }
 
 void bkm::write_all(BKM_RES br){
