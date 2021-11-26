@@ -42,28 +42,28 @@ void aiyagari::calc_moment(RESULT &r, PARAM p){
     r.this_wage = (1- p.alpha)*y/r.agg_lab;  // for next loop
 }
 
-void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
-	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
-	gsl_interp* interp_ptr;
+// void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
+// 	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
+// 	gsl_interp* interp_ptr;
 
-	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
-	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
-	for (size_t aidx=0; aidx<p.NA; ++aidx){
-    for (size_t zidx=0; zidx<p.NA; ++zidx){
-		r.consum_arr(aidx, zidx) = interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
-		r.exo_cash_on_hand(aidx, zidx), accel_ptr, &yval[0]); // super obscure
-		// try{
-		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
-		// }
-		// catch(...){
-		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
-		// }
+// 	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
+// 	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
+// 	for (size_t aidx=0; aidx<p.NA; ++aidx){
+//     for (size_t zidx=0; zidx<p.NA; ++zidx){
+// 		r.consum_arr(aidx, zidx) = interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
+// 		r.exo_cash_on_hand(aidx, zidx), accel_ptr, &yval[0]); // super obscure
+// 		// try{
+// 		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
+// 		// }
+// 		// catch(...){
+// 		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
+// 		// }
 
-	}
-    }
-	gsl_interp_free( interp_ptr );
-	gsl_interp_accel_free( accel_ptr );
-}
+// 	}
+//     }
+// 	gsl_interp_free( interp_ptr );
+// 	gsl_interp_accel_free( accel_ptr );
+// }
 
 void aiyagari::bellman(RESULT &r, PARAM p){
 	double consum, util, cond_util, cu, nu, this_wealth, this_a;
@@ -121,27 +121,28 @@ void aiyagari::vfi(RESULT &r, PARAM p){
     }
 }
 
-void aiyagari::egm(RESULT &r, PARAM p){
-    //TODO: Check only in range (no extrapolation)
-    for (size_t aidx=0; aidx<p.NA; ++aidx){
-        for (size_t zidx=0; zidx<p.NZ; ++zidx){
-            r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
-            r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
-            r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.interest*p.a_grid[aidx];  //TODO: remember to add the wage later
-            // get exogenous 
-            //TODO: change the index of first arguement
-            aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
-            // get value from last 
-        }
-    }
+// void aiyagari::egm(RESULT &r, PARAM p){
+//     //TODO: Check only in range (no extrapolation)
+//     for (size_t aidx=0; aidx<p.NA; ++aidx){
+//         for (size_t zidx=0; zidx<p.NZ; ++zidx){
+//             r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
+//             r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
+//             r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.interest*p.a_grid[aidx];  //TODO: remember to add the wage later
+//             // get exogenous 
+//             //TODO: change the index of first arguement
+//             aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
+//             // get value from last 
+//         }
+//     }
 
-}
+// }
 
 void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
 	aiyagari::get_a_change_mat(r.a_change_mat, r.pfunc, p);
 }
 
 void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM p){
+	// this matrix is transposed.
 	int choice, current_state, next_state;
 	a_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
@@ -194,7 +195,7 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
 	r.agg_cap = 0;
-
+	double ratio = 0.5;
 	for (size_t aidx=0; aidx < p.NA; ++aidx){
 		for (size_t zidx=0; zidx< p.NZ; ++zidx){
 			r.agg_cap += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
@@ -203,13 +204,14 @@ void aiyagari::beta_error(RESULT &r, PARAM p){
     aiyagari::calc_moment(r, p);
     //TODO: check the direction
 	if (r.implied_interest - p.interest < 0.){
-		r.high_beta = r.beta; 
+		r.high_beta = (1-ratio)*r.high_beta+ratio*r.beta; 
 	}else {
-		r.low_beta = r.beta;
+		r.low_beta = (1-ratio)*r.low_beta+ratio*r.beta;
 	}
 	r.beta_err = abs(r.implied_interest - p.interest);
-	double ratio = 0.5;
-	r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
+	// r.beta_err = abs(r.agg_cap - p.targeted_ak);
+	// r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
+	r.beta = (r.high_beta+r.low_beta)/2;
 	cout << r.implied_interest << "interest" << "\n";
 }
 

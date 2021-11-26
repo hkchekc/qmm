@@ -1,6 +1,7 @@
 #include <Eigen/Dense>
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include <vector>
+#include <cmath>
 #include <iostream>
 #include <stdio.h>
 using Eigen::MatrixXd, Eigen::Tensor;
@@ -11,22 +12,23 @@ using std::vector;
 
 struct PARAM{
 	const double gamma=2.0, delta=0.06, alpha=0.36;
-	const double a_min=0, a_max=20.0;
+	const double a_min=0, a_max=24.0;
 	const double net_agg_asset=0.0;
-	const unsigned NA=600, NZ=3;
+	const unsigned NA=700, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);
 	const double mu=0, rho=0.95, sigma=0.015;
     const double vf_crit = 1e-4, beta_crit = 1e-4, dist_crit=1e-7;
     const double interest = 1.084;
+	const double targeted_ak = 4.18582688958;
     const double calibrated_beta = 0.917493;
 	const double a_inc = (a_max-a_min)/(double)NA;
 };
 
 struct RESULT {
 	PARAM param;
-    double high_beta=1, low_beta=0.8;
+    double high_beta=.99900000000000033, low_beta=0.80000000000000000000000033;
     double beta=0.9;  // defined at start of
     double agg_cap = 1.;
     const double agg_lab = 1. ;  // 
@@ -39,10 +41,10 @@ struct RESULT {
 	Eigen::MatrixXi pfunc= Eigen::MatrixXi(param.NA, param.NZ);
 	double vf_err=100, dist_err=100, beta_err=100; // need reset vor while ausser q.
     // for EGM, not necessary
-    MatrixXd expected_vprime = MatrixXd(param.NA, param.NZ);
-    MatrixXd implied_consum_arr = MatrixXd(param.NA, param.NZ);
-    MatrixXd exo_cash_on_hand = MatrixXd(param.NA, param.NZ);
-    MatrixXd implied_cash_on_hand = MatrixXd(param.NA, param.NZ);
+    // MatrixXd expected_vprime = MatrixXd(param.NA, param.NZ);
+    // MatrixXd implied_consum_arr = MatrixXd(param.NA, param.NZ);
+    // MatrixXd exo_cash_on_hand = MatrixXd(param.NA, param.NZ);
+    // MatrixXd implied_cash_on_hand = MatrixXd(param.NA, param.NZ);
 	// for part 2 quantiles - 
 	MatrixXd marginal_dist = MatrixXd(5, 3), joint_dist = MatrixXd(5, 3), gini_arr = MatrixXd(3, 1);
 };
