@@ -1,10 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from .ks_util import *
 
 # simulation and get variance
 T = 2000
 NZ = 2
 delta = .06
+alpha = .36
 rng = np.random.default_rng(1000)
 amarkov = np.genfromtxt("../krusell_smith/input/amarkov.txt")
 states = np.array([.9832, 1.0157])
@@ -24,27 +26,51 @@ kss = 4.1858
 iss = 0.254863
 yss = kss**0.36
 css = yss- iss
-alpha = .36
 agg_k[0] = kss
 
-
-def ks_forcast(good, current_k):
-    slope_g =0.91772906
-    slope_b =0.93611402
-    inter_g = 0.11780762
-    inter_b = 0.09135248
-    if good:
-        return np.exp(np.log(current_k) * slope_g + inter_g)  # log normalized
-    else:
-        return np.exp(np.log(current_k) * slope_b + inter_b)
-
-
-agg_shocks = np.zeros(T).astype(np.int8)
-agg_shocks[0] = rng.choice(range(NZ)).astype(np.int8)
+# assume markov matrix
+# agg_shocks = np.zeros(T).astype(np.int8)
+# def ks_forcast(good, current_k):
+#     slope_g =0.91772906
+#     slope_b =0.93611402
+#     inter_g = 0.11780762
+#     inter_b = 0.09135248
+#     if good:
+#         return np.exp(np.log(current_k) * slope_g + inter_g)  # log normalized
+#     else:
+#         return np.exp(np.log(current_k) * slope_b + inter_b)
+# agg_shocks[0] = rng.choice(range(NZ)).astype(np.int8)
+# for tidx in range(1, T):
+#     agg_shocks[tidx] = rng.choice(range(NZ), p=amarkov[agg_shocks[tidx - 1], :])
+# assume AR1 process
+def ks_forcast(productivity, current_k):
+    slope =np.array([0.92064057, 0.95586539])
+    intercept = np.array([0.10843067, 0.06036801])
+    ks_states = np.array([.9832, 1.0157])
+    # interpolate
+    interp_slope = np.interp(productivity, ks_states, slope)
+    interp_intercept = np.interp(productivity, ks_states, intercept)
+    return np.exp(np.log(current_k) * interp_slope + interp_intercept)  # log normalized
+agg_shocks = np.ones(T)
+sigma = .012
+rho = .9
+mu = -sigma**2/2
+agg_shocks[0] = 1.
 for tidx in range(1, T):
-    agg_shocks[tidx] = rng.choice(range(NZ), p=amarkov[agg_shocks[tidx - 1], :])
-agg_a = states[agg_shocks]
+    agg_shocks[tidx] = np.exp(rho*np.log(agg_shocks[tidx - 1]) + rng.normal(mu, sigma))
+
+print(agg_shocks[:50], "agg")
+print("============================================")
+# markov
+# agg_a = states[agg_shocks]
+agg_a = agg_shocks  # ar1
+p = param()
+r = res()
+init_shocks(p, r)
+get_prices(p, r)
+r.sim_ak = 
 for tidx in range(1, T):
+    
     agg_k[tidx] = ks_forcast(agg_shocks[tidx - 1], agg_k[tidx - 1])
     agg_i[tidx] = (agg_k[tidx] - agg_k[tidx - 1]) + delta * agg_k[tidx - 1]
     agg_y[tidx] = agg_a[tidx]*(agg_k[tidx]**alpha)
@@ -55,7 +81,7 @@ agg_c = log_normalize(np.mean(agg_c), agg_c)
 agg_i = log_normalize(np.mean(agg_i), agg_i)
 agg_y = log_normalize(np.mean(agg_y), agg_y)
 
-drop = 100
+drop = 1
 variances = np.zeros(3)
 variances[0] = np.var(agg_c[drop:])
 variances[1] = np.var(agg_y[drop:])
@@ -82,7 +108,7 @@ print("corr", *corr.items())
 print("=============================")
 
 # BKM - positive 1 as numeraire
-drop = 50   # drop the last periods weird behaviour
+drop = 1   # drop the last periods weird behaviour
 dir = "../bkm/data_output/"
 k_res = np.genfromtxt(dir+"ak_path.txt")[:-drop]
 c_res = np.genfromtxt(dir+"c_path.txt")[:-drop]
@@ -95,8 +121,8 @@ bkm_agg_i = np.zeros(T)
 bkm_agg_k = np.zeros(T)
 bkm_agg_y = np.zeros(T)
 bkm_li = [bkm_agg_c, bkm_agg_i, bkm_agg_k, bkm_agg_y]
-kss = 4.1858
-iss = 0.254863
+kss = k_res[-1] # should be 4.1858, but there are errors
+iss = i_res[-1] # 0.254863
 yss = kss**alpha
 css = yss-iss
 shock = .15
@@ -107,29 +133,21 @@ y_res = log_normalize(yss, y_res)/shock
 c_res = log_normalize(css, c_res)/shock
 
 for tidx in range(0, T):
-    s = agg_shocks[tidx]
+    # markov
+    # s = np.log(state_resd[agg_shocks[tidx]])
+    # AR 1
+    s = np.log(agg_shocks[tidx])
     if T > tidx+effect_len:
-        bkm_agg_k[tidx:tidx + effect_len] += k_res * state_resd[s]
-        bkm_agg_c[tidx:tidx + effect_len] += c_res * state_resd[s]
-        bkm_agg_i[tidx:tidx + effect_len] += i_res * state_resd[s]
-        bkm_agg_y[tidx:tidx + effect_len] += y_res * state_resd[s]
+        bkm_agg_k[tidx:tidx + effect_len] += k_res * s
+        bkm_agg_c[tidx:tidx + effect_len] += c_res * s
+        bkm_agg_i[tidx:tidx + effect_len] += i_res * s
+        bkm_agg_y[tidx:tidx + effect_len] += y_res * s
     else:  #
-        remain = T - tidx -1
-        bkm_agg_k[tidx:] += k_res[remain]*state_resd[s]
-        bkm_agg_c[tidx:] += c_res[remain]*state_resd[s]
-        bkm_agg_i[tidx:] += i_res[remain]*state_resd[s]
-        bkm_agg_y[tidx:] += y_res[remain]*state_resd[s]
-
-# temp = np.zeros((T,T))
-# effect_len = len(k_res)
-# length_k = np.zeros(T)
-# length_k[:effect_len] = k_res
-# for tidx in range(T):
-#     if tidx == 0:
-#         temp[tidx, tidx:] = state_resd[agg_shocks[tidx]] * length_k[:]
-#     else:
-#         temp[tidx, tidx:] = state_resd[agg_shocks[tidx]] * length_k[:-tidx]
-# bkm_agg_k = np.sum(temp, axis=0)
+        remain = T - tidx
+        bkm_agg_k[tidx:] += k_res[:remain]*s
+        bkm_agg_c[tidx:] += c_res[:remain]*s
+        bkm_agg_i[tidx:] += i_res[:remain]*s
+        bkm_agg_y[tidx:] += y_res[:remain]*s
 
 drop = 0
 variances = np.zeros(3)
