@@ -11,6 +11,7 @@ from time import time
 
 p  = param()
 r = result()
+# r.p_star = 3.2375
 big_loop_time = time()
 p_err_li = [100, ]
 big_it = 0
@@ -24,10 +25,11 @@ while (p_err_li[-1] > p.crit_clear):
     inventory_sequence(r, p)
     r.stat_dist = final_good_dist(r, p)
     r.p_star , p_err = market_clear(r, p)
-    # p_err = 0
+    
     p_err_li.append(p_err)
     big_it += 1
     if big_it == 10:
         print("no convergence")
         break
+ #   break
 print("done with all, time is {}".format(time()-big_loop_time))
