@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 #Usage: Put this script in the same directory as the Fortran (*.f95) files.
 # Then, Just change the ps_name to the problem set intended and run the script!
 # If you like to change how graphs is plot, modify the code in the end.
-#
+
 def run_fortran(instr):
     proc = sp.Popen(shlex.split(instr), stdout=sp.PIPE, stderr=sp.PIPE)
     while proc.poll() is None:  # print stdout realtime/ for debugging
@@ -19,8 +19,7 @@ def run_fortran(instr):
     stderr = proc.stderr.read().decode()
     if proc.returncode:
         raise ValueError(stdout + stderr)
-#
-#
+
 # compile the code on command line
 ps_name = 'ks' # change for whatever file
 ffile_name = "{}.f95".format(ps_name)
@@ -48,7 +47,6 @@ for c in arr_li:
     except OSError:
         vf = None
     f_dict[c] = vf
-
 
 # KS
 plt.plot( f_dict['KGRID'],f_dict['PFUNC'], 'r')

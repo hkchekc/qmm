@@ -36,20 +36,12 @@ markov = np.array([[0.9586, 0.0314, 0.0000, 0.0000, 0.0000, 0.0097, 0.0003, 0.00
                     [0.0000, 0.0474, 0.8952, 0.0474, 0.0000, 0.0000, 0.0005, 0.0090, 0.0005, 0.000],
                     [0.0000, 0.0000, 0.0531, 0.9137, 0.0232, 0.0000, 0.0000, 0.0005, 0.0092, 0.0002],
                     [0.0000, 0.0000, 0.0000, 0.0314, 0.9586, 0.0000, 0.0000, 0.0000, 0.0003, 0.0097]])
-# markov = np.array([[0.9586, 0.0314, 0.0000, 0.0000, 0.0000],
-#                     [0.0232, 0.9137, 0.0531, 0.0000, 0.0000],
-#                     [0.0000, 0.0474, 0.8952, 0.0474, 0.0000],
-#                     [0.0000, 0.0000, 0.0531, 0.9137, 0.0232],
-#                     [0.0000, 0.0000, 0.0000, 0.0314, 0.9586]])
 NZ = markov.shape[0]
 markov_t = markov.T
 states = np.array([0.5324, 0.7415, 1., 1.3487, 1.8784, 0.5324, 0.7415, 1., 1.3487, 1.8784])
 trans_shock = .4
 trans_shock_prob = 0.01
 states[5:] *= trans_shock
-
-# states = np.array([0.5324, 0.7415, 1., 1.3487, 1.8784])
-
 
 #result arrays
 exo_consum_arr = np.zeros((NA, NZ, life_time))
@@ -122,7 +114,6 @@ for tidx in range(life_time-2, -1, -1):
         # not using next period value after getting this.consumption, therefore I can flush it here.
         next_value = np.zeros((NA, NZ))
         tmp_consum = exo_consum_arr[:, :, tidx]
-        # tmp_consum[tmp_consum <= 0] = 0.0000000001
         for last_zidx in range(NZ):
             for aidx in range(NA):
                 this_val = interest /(tmp_consum[aidx, last_zidx] ** gamma)
@@ -147,7 +138,6 @@ def map_to_nearest_grid(income_grids, income_processes):
 rho_arr = np.linspace(.7,.995, 10)
 
 rho = .97
-# for rho in rho_arr:
 rng = np.random.default_rng(seed=10000)
 init_income = 1
 NHOUSE = 5000
@@ -169,17 +159,11 @@ for tidx in range(1, work_time):
     perm_shock_mat[:, tidx] = this_shock
     tmp_shock = rng.choice([1, trans_shock], NHOUSE,  p=[1-trans_shock_prob, trans_shock_prob])
     this_total_income = np.exp(this_income+this_shock)
-    # this_total_income[this_total_income< 0] = 1
     income_process[:, tidx] = tmp_shock* this_total_income
 income_process[:, work_time:] = pension_income
 
 for tidx in range(1, work_time):
     income_process[1:, tidx] *= profile[tidx]
-
-# survival_mat = np.ones((NHOUSE, tidx))
-# for house in range(NHOUSE):
-#     pass
-
 
 approx_income_idx = map_to_nearest_grid(states, income_process)
 
@@ -195,12 +179,6 @@ simu_asset[:, 0] = initial_capital
 death_rate = discount_arr/beta
 for tidx in range(life_time):
     for house in range(NHOUSE):
-        # if tidx >= work_time:
-        #     death = rng.choice([True, False],1, p=[death_rate[tidx], 1 - death_rate[tidx]])
-        #     if death:
-        #         simu_asset[house, tidx:] = 0
-        #         simu_consum[house, tidx:] = 0
-        #         break
         this_cash_on_hand = interest*simu_asset[house, tidx] + income_process[house, tidx]
         state = approx_income_idx[house, tidx]
         if tidx < work_time:
@@ -226,7 +204,6 @@ for tidx in range(life_time):
 
 
 # report values and graphs
-
 # growth
 log_consum = np.log(simu_consum)
 avg_consum = np.mean(simu_consum, axis=0)
@@ -258,5 +235,3 @@ covar_income_shock = Series(np.mean(consum_lag, axis=0)).cov(Series(np.mean(perm
 print("phi is", 1-covar_income_shock/(perm_shock_se**2))
 
 plt.show()
-
-
