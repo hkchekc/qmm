@@ -3,43 +3,7 @@
 import numpy as np
 import math
 from scipy import interpolate, stats, optimize
-from numba import njit, jit
-
-def golden_search(func, bmin, bmax):
-    max_it = 10000
-    precision = 1e-10
-    
-    r = (3. - math.sqrt(5.))/2.
-    
-    c = bmin + r*(bmax - bmin)
-    x = c
-    
-    fc = func(x)
-    fc = -1.*fc
-    
-    d = bmin + (1. - r)*(bmax -bmin)
-    x = d
-    fd = func(x)
-    fd = -1.*fd
-    
-    for i in range(max_it):
-        if fc >= fd:
-            z = bmin + (1-r)*(d-bmin)
-            bmin = c
-            c = d
-            fc = fd
-            d = z
-            x = d
-            fd = -1.*func(x)
-        else:
-            z = bmin + r*(d-bmin)
-            bmax = d
-            d = c
-            fd = fc
-            c = z
-            x = c
-            fc = -1.*func(x)
-    return x
+from numba import njit
 
 class param(object):
     
@@ -50,7 +14,7 @@ class param(object):
         self.theta_m = .4991
         self.theta_n = .3275
         self.delta = .0173
-        self.del_cost_max = .2198
+        self.del_cost_max = .333
         self.del_cost_min = 0
         self.cost_dist = stats.uniform(loc =self.del_cost_min , scale=self.del_cost_max)
         self.z_bar = 1.0032  # no uncertainty
@@ -65,9 +29,9 @@ class param(object):
         step  = self.NS-1
         self.s_grid = np.zeros(self.NS)
         self.s_grid[1:] = 10**np.linspace(lin_min, lin_max, step)
-        self.NJ = 10  # number of epriods w/o adjustment
+        self.NJ = 12  # number of epriods w/o adjustment
         self.crit_vf = 1e-6 # should be -6
-        self.crit_clear = 1e-4
+        self.crit_clear = 1e-8
         self.crit_used_up = 1e-8
         self.crit_gs = 1e-10
         self.p_max = 3.3
@@ -101,9 +65,9 @@ class result(object):
         self.m_arr_j = np.zeros(P.NJ)
         self.n_arr_j = np.zeros(P.NJ)
         self.output_arr_j = np.zeros(P.NJ)
-        # self.adj_pmf = np.zeros(P.NJ)
         self.stat_dist = np.zeros(P.NJ)
         self.output_dist = np.zeros(P.NJ)
+        self.output_star_percentage = 0
         self.h_j = np.zeros(P.NJ)
 
 def get_price(param, price):
@@ -189,12 +153,11 @@ def final_good_dist(r, p):
     
         
 def market_clear(r, p):
-    # find demand for m, n
-    interm_demand = 0.
-    for ji in range(p.NJ-1):
-        # demand is how much is restocked
-        interm_demand += r.h_j[ji]*r.stat_dist[ji]*(r.s_star - r.s_arr[ji+1])
-    # this is wrong, because restock have nothing to do with production
+    # find output dist
+    r.output_star_percentage, r.output_dist = _get_output_dist(r, p)
+    interm_demand = 0. # find demand for m, n
+    for ji in range(p.NJ):  # demand is how much is restocked
+        interm_demand += r.h_j[ji]*r.stat_dist[ji]*(r.s_star - r.s_arr[ji])
     n_demand = np.sum(r.n_arr_j*r.stat_dist)
     # find agg capital and labor
     agg_cap, interm_good_labor = _find_agg_cap_lab(r.q, p.z_bar, p.alpha, r.wage, interm_demand)
@@ -209,7 +172,7 @@ def market_clear(r, p):
     # update p
     consum -= agg_cap*p.delta
     new_p = 1 / consum
-    if new_p > r.p_star:
+    if new_p < r.p_star:
         p.p_max = float(r.p_star)
     else:
         p.p_min = float(r.p_star)
@@ -217,18 +180,25 @@ def market_clear(r, p):
     err = np.abs(r.p_star - new_p)
     return p_star_new, err
 
+def _get_output_dist(r, p):
+    output_star_percentage = 0
+    output_arr_j = np.zeros(p.NJ)
+    for ji in range(p.NJ):
+        output_star_percentage += r.output_star*r.stat_dist[ji]*r.h_j[ji]
+        output_arr_j[ji] = r.output_arr_j[ji]*r.stat_dist[ji]*(1-r.h_j[ji])
+    out_sum = output_star_percentage + np.sum(output_arr_j)
+    return output_star_percentage/out_sum, output_arr_j/out_sum
+
 @njit
 def _find_agg_cap_lab(q, z, alpha, w, demand):
-    # agg_labor is ugly term 
     ugly_term = (w/q/z/(1-alpha))**(1/alpha)
-    agg_cap = demand/(ugly_term**(1-alpha)) 
-    interm_lab = ugly_term*agg_cap
+    interm_lab = demand/(ugly_term**(alpha))
+    agg_cap = ugly_term*interm_lab
     return agg_cap, interm_lab
         
 def _optimal_s(s_grid, p_star, q, vals_s1):
     vals_s1_with_cost = p_star*q*s_grid - vals_s1
     v1_wc_spline = interpolate.CubicSpline(s_grid, vals_s1_with_cost, bc_type="not-a-knot")
-    # s_star = optimize.minimize(v1_wc_spline, np.array([1.8]), bounds=[(s_grid[0], s_grid[-1])])
     s_star = optimize.minimize_scalar(v1_wc_spline, bracket=(s_grid[0], s_grid[-1]),
                                       method="bounded", bounds=(s_grid[0], s_grid[-1]), tol=1e-10)
     # s_star = optimize.golden(v1_wc_spline, brack=(s_grid[0], s_grid[-1]), tol=1e-10, full_output=True)
@@ -254,8 +224,7 @@ def _optimal_m(r, p):  # void function
                                           bounds=(0, s1), tol=1e-10)
 
         r.m_arr[si] = res.x
-    # check m* < s1
-    mx = r.m_arr > p.s_grid
+    mx = r.m_arr > p.s_grid  # check m* < s1
     r.m_arr[mx] = p.s_grid[mx]
     r.n_arr = _find_n(r.m_arr, p.theta_m, p.theta_n, p.eta, r.p_star)
     r.vals_s1_new =r.p_star*_final_net_prod(r.m_arr, r.n_arr, p.theta_m,
@@ -289,9 +258,6 @@ def _final_net_prod(m, n, theta_m, theta_n, s1, store_cost, wage):  # q
     cost = store_cost*(s1-m) + wage*n
     return _final_production(m, n, theta_m, theta_n) - cost
 
-@njit
-def _interm_prod(z, k, l, alpha):
-    return z*(k**alpha)*(l**(1-alpha))
 
 def _find_expected_v0(r, p):
     percent_adj = p.cost_dist.cdf(r.threshold_arr)
@@ -307,8 +273,8 @@ def _find_expected_v0_helper(percent_adj, val_adj, p_star, s_grid, q, threshold,
 
 @njit
 def _del_cost_threshold(vals_s1, p_star, q, s_grid, val_adj, wage, del_cost_max):
-    # return arr of length NS
     thres_arr = -1. * (vals_s1 - p_star * q * s_grid - val_adj) / p_star / wage
     thres_arr[thres_arr < 0] = 0
     thres_arr[thres_arr > del_cost_max] = del_cost_max
-    return thres_arr
+    return thres_arr  # return arr of length NS
+

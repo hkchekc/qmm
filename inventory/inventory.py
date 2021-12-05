@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Nov 29 20:21:07 2021
-
-@author: chek_choi
-"""
 from inventory_util import *
 from time import time
 
 
 p  = param()
 r = result()
-# r.p_star = 3.2375
 big_loop_time = time()
 p_err_li = [100, ]
 big_it = 0
@@ -31,5 +25,4 @@ while (p_err_li[-1] > p.crit_clear):
     if big_it == 10:
         print("no convergence")
         break
- #   break
 print("done with all, time is {}".format(time()-big_loop_time))
