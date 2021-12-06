@@ -206,13 +206,15 @@ void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM
 void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	double uniform  = 1/(double)p.NA/(double)p.NZ;
 
-	MatrixXd abs_diff(p.NA*p.NZ, 1);
-	MatrixXd new_stat_dist(p.NA*p.NZ,1);
-	r.stat_dist.fill(uniform);
+	Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
+	Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
+	Eigen::MatrixXf stat_dist(p.NA*p.NZ, 1);
+	stat_dist.fill(uniform);
 	r.dist_err = 100;
 	// atempts to imporve performance - if updating too much as once, will lead to instability
-	MatrixXd tmp_a_mat = r.a_change_mat*r.a_change_mat*r.a_change_mat;
-	MatrixXd tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	// use float instead of doubles to improve performance
+	Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
+	Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
 	// MatrixXd tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
 	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
 	// MatrixXd tmp_a_mat = Apow(2.);
@@ -220,15 +222,13 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// for (size_t i=0; i<50; ++i){
 	// 	r.stat_dist = r.a_change_mat * r.stat_dist;
 	// }
-	// unsigned i = 0;
 	while (r.dist_err > p.dist_crit){
-		new_stat_dist = tmp_tmp_a_mat * r.stat_dist;
-		abs_diff = new_stat_dist - r.stat_dist;
+		new_stat_dist = tmp_tmp_a_mat * stat_dist;
+		abs_diff = new_stat_dist - stat_dist;
 		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
-		r.stat_dist = new_stat_dist;
-		// i += 1;
+		stat_dist = new_stat_dist;
 	}
-	// cout << i << "count for stat dist \n";
+	r.stat_dist = stat_dist.cast <double> ();
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
