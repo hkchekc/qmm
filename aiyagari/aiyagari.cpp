@@ -42,29 +42,6 @@ void aiyagari::calc_moment(RESULT &r, PARAM p){
     r.this_wage = (1- p.alpha)*y/r.agg_lab;  // for next loop
 }
 
-// void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
-// 	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
-// 	gsl_interp* interp_ptr;
-
-// 	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
-// 	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
-// 	for (size_t aidx=0; aidx<p.NA; ++aidx){
-//     for (size_t zidx=0; zidx<p.NA; ++zidx){
-// 		r.consum_arr(aidx, zidx) = interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
-// 		r.exo_cash_on_hand(aidx, zidx), accel_ptr, &yval[0]); // super obscure
-// 		// try{
-// 		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
-// 		// }
-// 		// catch(...){
-// 		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
-// 		// }
-
-// 	}
-//     }
-// 	gsl_interp_free( interp_ptr );
-// 	gsl_interp_accel_free( accel_ptr );
-// }
-
 void aiyagari::bellman(RESULT &r, PARAM p){
 	double consum, util, cond_util, cu, nu, this_wealth, this_a;
 	MatrixXd abs_diff(p.NA, p.NZ);
@@ -108,34 +85,94 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 
 void aiyagari::vfi(RESULT &r, PARAM p){
     r.vf_err = 100; 
-    // set init vf guess as and the corresponding vfprime guess as 
-    // for (size_t aidx=0; aidx<p.NA; ++aidx){
-    //     for (size_t zidx=0; zidx<p.NZ; ++zidx){
-    //         r.vf(aidx, zidx) = p.a_grid[aidx] + p.states[zidx];
-    //     }
-    // }
-
+	// initial guess of value function (implying expected vprime is also )
+	r.vf = MatrixXd::Zero(p.NA, p.NZ);
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		r.expected_vprime(aidx, zidx) = pow(r.beta*(p.a_grid[aidx]), -p.gamma) ; // just guess more or less the correct shape
+	
+	}
+	}
     while (r.vf_err > p.vf_crit){
-        // egm(r, p);
-        aiyagari::bellman(r, p);
+        aiyagari::egm(r, p);
+        // aiyagari::bellman(r, p);
     }
+	aiyagari::get_pfunc(r, p);
 }
 
-// void aiyagari::egm(RESULT &r, PARAM p){
-//     //TODO: Check only in range (no extrapolation)
-//     for (size_t aidx=0; aidx<p.NA; ++aidx){
-//         for (size_t zidx=0; zidx<p.NZ; ++zidx){
-//             r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
-//             r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
-//             r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.interest*p.a_grid[aidx];  //TODO: remember to add the wage later
-//             // get exogenous 
-//             //TODO: change the index of first arguement
-//             aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
-//             // get value from last 
-//         }
-//     }
+void aiyagari::get_pfunc(RESULT &r, PARAM p){
+    double a_prime, this_constraint; // to find policy
+	int tmp_floor, tmp_ceil;
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+	this_constraint = r.implied_cash_on_hand(0, zidx);
+    for (size_t aidx=0; aidx<p.NA; ++aidx){
+        if (r.exo_cash_on_hand(aidx, zidx) < this_constraint){
+            r.consum_arr(aidx, zidx) = r.exo_cash_on_hand(aidx, zidx); 
+            r.pfunc(aidx, zidx) = (int)0;
+        } else{
+            a_prime = r.exo_cash_on_hand(aidx, zidx) - r.consum_arr(aidx, zidx); // by budget constraint
+            tmp_floor = std::floor((a_prime - p.a_min)/p.a_inc); // I think it must always be in grid
+            tmp_ceil = std::ceil((a_prime - p.a_min)/p.a_inc); 
+            if ( std::abs(a_prime-p.a_grid[tmp_floor])> std::abs(a_prime-p.a_grid[tmp_ceil]) ){
+                r.pfunc(aidx, zidx) = tmp_ceil;
+            }else{
+                r.pfunc(aidx, zidx) = tmp_floor;
+            }
+            // make sure no outside of range - it is ok, shouldn't matter for eq.
+            if ((unsigned) r.pfunc(aidx, zidx) >= p.NA){
+                r.pfunc(aidx, zidx) = p.NA - 1;
+            }
+        }
+    }
+	}
+}
 
-// }
+void aiyagari::egm(RESULT &r, PARAM p){
+		MatrixXd vfunc_new = MatrixXd::Zero(p.NA, p.NZ);// to be populated in loop
+
+    for (size_t zidx=0; zidx<p.NZ; ++zidx){
+		for (size_t aidx=0; aidx<p.NA; ++aidx){
+            r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
+            r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
+            r.exo_cash_on_hand(aidx, zidx) = r.this_wage*p.states[zidx] + p.interest*p.a_grid[aidx]; 
+        }
+		aiyagari::interp_linear(r.implied_cash_on_hand.block(0, zidx, p.NA, 1).array(), 
+				r.implied_consum_arr.block(0, zidx, p.NA, 1).array(), r, p, zidx);
+    }
+	r.expected_vprime = MatrixXd::Zero(p.NA, p.NZ);
+	// populate expected vprime
+	for (size_t nzidx=0; nzidx<p.NZ; ++nzidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		vfunc_new(aidx, nzidx) = p.interest/pow(r.consum_arr(aidx, nzidx), p.gamma);
+		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+			r.expected_vprime(aidx, zidx) += p.markov(zidx, nzidx) *vfunc_new(aidx, nzidx) ;
+		}
+	}
+	}
+	MatrixXd abs_diff = vfunc_new - r.vf;
+	r.vf_err =  max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
+	r.vf = vfunc_new;
+}
+
+void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM p, size_t zi){
+	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
+	gsl_interp* interp_ptr;
+
+	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
+	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
+		r.exo_cash_on_hand(aidx, zi), accel_ptr, &r.consum_arr(aidx, zi)); // super obscure
+		// try{
+		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
+		// }
+		// catch(...){
+		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
+		// }
+    }
+	gsl_interp_free( interp_ptr );
+	gsl_interp_accel_free( accel_ptr );
+}
 
 void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
 	aiyagari::get_a_change_mat(r.a_change_mat, r.pfunc, p);
@@ -176,6 +213,7 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// atempts to imporve performance - if updating too much as once, will lead to instability
 	MatrixXd tmp_a_mat = r.a_change_mat*r.a_change_mat*r.a_change_mat;
 	MatrixXd tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	// MatrixXd tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
 	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
 	// MatrixXd tmp_a_mat = Apow(2.);
 	// r.stat_dist = tmp_a_mat*r.stat_dist;

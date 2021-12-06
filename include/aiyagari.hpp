@@ -14,7 +14,7 @@ struct PARAM{
 	const double gamma=2.0, delta=0.06, alpha=0.36;
 	const double a_min=0, a_max=24.0;
 	const double net_agg_asset=0.0;
-	const unsigned NA=700, NZ=3;
+	const unsigned NA=1000, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);
@@ -41,10 +41,10 @@ struct RESULT {
 	Eigen::MatrixXi pfunc= Eigen::MatrixXi(param.NA, param.NZ);
 	double vf_err=100, dist_err=100, beta_err=100; // need reset vor while ausser q.
     // for EGM, not necessary
-    // MatrixXd expected_vprime = MatrixXd(param.NA, param.NZ);
-    // MatrixXd implied_consum_arr = MatrixXd(param.NA, param.NZ);
-    // MatrixXd exo_cash_on_hand = MatrixXd(param.NA, param.NZ);
-    // MatrixXd implied_cash_on_hand = MatrixXd(param.NA, param.NZ);
+    MatrixXd expected_vprime = MatrixXd(param.NA, param.NZ);
+    MatrixXd implied_consum_arr = MatrixXd(param.NA, param.NZ);
+    MatrixXd exo_cash_on_hand = MatrixXd(param.NA, param.NZ);
+    MatrixXd implied_cash_on_hand = MatrixXd(param.NA, param.NZ);
 	// for part 2 quantiles - 
 	MatrixXd marginal_dist = MatrixXd(5, 3), joint_dist = MatrixXd(5, 3), gini_arr = MatrixXd(3, 1);
 };
@@ -55,7 +55,8 @@ void init_params(PARAM &p);
 void calc_moment(RESULT &r, PARAM p);
 void bellman(RESULT &r, PARAM p);
 void egm(RESULT &r, PARAM p);
-void interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p);
+void get_pfunc(RESULT &r, PARAM p);
+void interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM p, size_t zi);
 void populat_a_change_mat(RESULT &r, PARAM p);
 void find_stat_dist(RESULT &r, PARAM p);
 void beta_error(RESULT &r, PARAM p);
