@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
-from ..krusell_smith import ks_util
 
 # usage: python3 plot.py directory_intended
 dir = ""
