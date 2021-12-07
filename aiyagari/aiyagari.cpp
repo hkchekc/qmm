@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <Eigen/OrderingMethods>
 #include <cmath>
 #include <fstream>
 #include <gsl/gsl_spline.h>
@@ -86,11 +88,10 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 void aiyagari::vfi(RESULT &r, PARAM p){
     r.vf_err = 100; 
 	// initial guess of value function (implying expected vprime is also )
-	r.vf = MatrixXd::Zero(p.NA, p.NZ);
+	// r.vf = MatrixXd::Zero(p.NA, p.NZ);
 	for (size_t zidx=0; zidx<p.NZ; ++zidx){
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
 		r.expected_vprime(aidx, zidx) = pow(r.beta*(p.a_grid[aidx]), -p.gamma) ; // just guess more or less the correct shape
-	
 	}
 	}
     while (r.vf_err > p.vf_crit){
@@ -179,28 +180,44 @@ void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
 }
 
 void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM p){
-	// this matrix is transposed.
-	int choice, current_state, next_state;
-	a_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
-	for (size_t aidx=0; aidx<p.NA; ++aidx){
-		for (size_t zidx=0; zidx<p.NZ; ++zidx){
-			current_state = zidx*p.NA+aidx;
-			choice = pol(aidx, zidx);
-			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
-				next_state = nzidx*p.NA + choice;
-				a_mat(next_state, current_state) += p.markov(zidx, nzidx); 
-			}
+// 	// this matrix is transposed.
+// 	int choice, current_state, next_state;
+// 	Eigen::MatrixXf tmp_a_mat = Eigen::MatrixXf::Zero(p.NA*p.NZ, p.NA*p.NZ);
+// 	for (size_t aidx=0; aidx<p.NA; ++aidx){
+// 		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+// 			current_state = zidx*p.NA+aidx;
+// 			choice = pol(aidx, zidx);
+// 			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
+// 				next_state = nzidx*p.NA + choice;
+// 				tmp_a_mat(next_state, current_state) += p.markov(zidx, nzidx); 
+// 			}
+// 		}
+// 	}
+
+// // not sure but I think the eigenvector should be the same with or without normalizing
+//   	float sum_row;
+//   	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
+//   		sum_row = tmp_a_mat.col(i).sum();
+//   		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
+//   		 	tmp_a_mat(j,i) /= sum_row;
+//   		}
+//   	}
+
+	// new method
+	Eigen::MatrixXf tmp_a_mat(p.NA*p.NZ, p.NA*p.NZ);
+	Eigen::MatrixXi this_pol_arr;
+	Eigen::MatrixXf tmp_small_trans_mat;
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+		this_pol_arr = pol.col(zidx);
+		tmp_small_trans_mat = Eigen::MatrixXf::Zero(p.NA, p.NA);
+		for (size_t aidx=0; aidx < p.NA; ++aidx){
+			tmp_small_trans_mat(this_pol_arr(aidx), aidx) = 1.;
+		}
+		for (size_t nzidx=0; nzidx<p.NZ; ++nzidx){
+			tmp_a_mat.block(nzidx*p.NA, zidx*p.NA, p.NA, p.NA) = p.markov(nzidx, zidx)*tmp_small_trans_mat;
 		}
 	}
-// not sure but I think the eigenvector should be the same with or without normalizing
-  	float sum_row;
-  	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
-  		sum_row = a_mat.col(i).sum();
-  		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
-  		 	a_mat(j,i) /= sum_row;
-  		}
-  	}
- 
+	a_mat = tmp_a_mat.cast<double>();
 }
 
 void aiyagari::find_stat_dist(RESULT &r, PARAM p){
@@ -214,7 +231,7 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// atempts to imporve performance - if updating too much as once, will lead to instability
 	// use float instead of doubles to improve performance
 	Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
-	Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	// Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
 	// MatrixXd tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
 	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
 	// MatrixXd tmp_a_mat = Apow(2.);
@@ -222,34 +239,57 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// for (size_t i=0; i<50; ++i){
 	// 	r.stat_dist = r.a_change_mat * r.stat_dist;
 	// }
-	while (r.dist_err > p.dist_crit){
-		new_stat_dist = tmp_tmp_a_mat * stat_dist;
-		abs_diff = new_stat_dist - stat_dist;
-		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
-		stat_dist = new_stat_dist;
-	}
+	// while (r.dist_err > p.dist_crit){
+	// 	new_stat_dist = tmp_tmp_a_mat * stat_dist;
+	// 	abs_diff = new_stat_dist - stat_dist;
+	// 	r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
+	// 	stat_dist = new_stat_dist;
+	// }
+	// r.stat_dist = stat_dist.cast <double> ();
+	// QR decompostion - in fact similar performance
+	// A_MAT - EYE and then last row is all ones. (states+1, states) matrix. RHS is (states+1) 0-vector except last entry =1 
+	Eigen::MatrixXf A(p.NA*p.NZ+1, p.NA*p.NZ);
+	A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = tmp_a_mat - Eigen::MatrixXf::Identity(p.NA*p.NZ, p.NA*p.NZ);
+	A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXf::Ones(1, p.NA*p.NZ);
+	Eigen::MatrixXf b = Eigen::MatrixXf::Zero(p.NA*p.NZ+1, 1);
+	b(p.NA*p.NZ) = 1;
+	// then QR solve
+	stat_dist = A.householderQr().solve(b);
+	// Eigen:: SparseMatrix<float> spA = A.sparseView();
+	// Eigen:: SparseMatrix<float> spb = b.sparseView(), sp_dist;
+	// Eigen::SparseQR<Eigen::SparseMatrix<float>, Eigen::COLAMDOrdering<int> > solver;
+	// solver.compute(spA);
+	// sp_dist = solver.solve(spb);
+	// stat_dist = Eigen::MatrixXf(sp_dist);
+
 	r.stat_dist = stat_dist.cast <double> ();
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
 	r.agg_cap = 0;
-	double ratio = 0.5;
+	const double gold = (sqrt(5) + 1) / 2, ratio = 0.4;
 	for (size_t aidx=0; aidx < p.NA; ++aidx){
 		for (size_t zidx=0; zidx< p.NZ; ++zidx){
 			r.agg_cap += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
+	//catch error if initial guess is bad
+	if (r.agg_cap < 1e-4){
+		r.agg_cap = 0.01;
+	}
     aiyagari::calc_moment(r, p);
     //TODO: check the direction
 	if (r.implied_interest - p.interest < 0.){
-		r.high_beta = (1-ratio)*r.high_beta+ratio*r.beta; 
+		r.high_beta = r.high_beta- ratio*(r.high_beta-r.low_beta)/gold;
+		r.beta = (r.high_beta+r.low_beta)/2;
 	}else {
-		r.low_beta = (1-ratio)*r.low_beta+ratio*r.beta;
+		r.low_beta = r.low_beta+ ratio*(r.high_beta-r.low_beta)/gold; 
+		r.beta = (r.high_beta+r.low_beta)/2;
+
 	}
 	r.beta_err = abs(r.implied_interest - p.interest);
 	// r.beta_err = abs(r.agg_cap - p.targeted_ak);
 	// r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
-	r.beta = (r.high_beta+r.low_beta)/2;
 	cout << r.implied_interest << "interest" << "\n";
 }
 

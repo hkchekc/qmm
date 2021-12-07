@@ -224,11 +224,12 @@ MatrixXd bkm::youngs_dist(const PARAM p, const BKM_RES br, const size_t tidx){
 
 void bkm::simulate_dist(const RESULT r, const PARAM p, BKM_RES &bkm_r, const BKM_PARAM bkm_p, const bool young){
     bkm_r.new_dist_path.col(0) = r.stat_dist;
+    MatrixXd last_a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
+    Eigen::MatrixXi last_policy;
     for (size_t tidx= 1; tidx< bkm_p.TIME; ++tidx){
-        Eigen::MatrixXi last_policy = bkm_r.pfunc.block(0, get_3d_index(0, tidx), p.NA, p.NZ); 
-        MatrixXd last_a_mat;
+         last_policy = bkm_r.pfunc.block(0, get_3d_index(0, tidx), p.NA, p.NZ); 
         if (!young){
-            last_a_mat = MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
+            last_a_mat.fill(0);
             aiyagari::get_a_change_mat(last_a_mat , last_policy, p); 
         } else {
             last_a_mat = bkm::youngs_dist(p, bkm_r, tidx); 
