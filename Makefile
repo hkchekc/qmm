@@ -1,7 +1,7 @@
 CC=g++-8
 CFLAGS=-Wall -O3 -fopenmp -mavx -ffast-math -ftree-vectorize -Wextra -c -std=c++17 -I. -I/usr/local/include
-SRCDIR=bkm
-SUPPORT=aiyagari
+SRCDIR=aiyagari
+SUPPORT=
 ODIR=tmp
 OBJ=$(patsubst %,$(ODIR)/%,$(_OBJ))
 ifeq ($(SUPPORT),)

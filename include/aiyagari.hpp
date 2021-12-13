@@ -19,7 +19,7 @@ struct PARAM{
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);
 	const double mu=0, rho=0.95, sigma=0.015;
-    const double vf_crit = 1e-4, beta_crit = 1e-4, dist_crit=1e-7;
+    const double vf_crit = 1e-6, beta_crit = 1e-1, dist_crit=1e-7;
     const double interest = 1.084;
 	const double targeted_ak = 4.18582688958;
     const double calibrated_beta = 0.917493;
@@ -61,6 +61,7 @@ void populat_a_change_mat(RESULT &r, PARAM p);
 void find_stat_dist(RESULT &r, PARAM p);
 void beta_error(RESULT &r, PARAM p);
 void write_all (RESULT r, PARAM p, std::string dir);
+void write_result(RESULT r, std::string fname);
 void find_beta(RESULT &r, PARAM p);
 void calc_gini(RESULT &r, PARAM p);
 void vfi(RESULT &r, PARAM p);

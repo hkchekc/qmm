@@ -223,14 +223,14 @@ void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM
 void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	double uniform  = 1/(double)p.NA/(double)p.NZ;
 
-	Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
-	Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
-	Eigen::MatrixXf stat_dist(p.NA*p.NZ, 1);
-	stat_dist.fill(uniform);
+	// Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
+	// Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
+	Eigen::MatrixXd stat_dist(p.NA*p.NZ, 1);
+	// stat_dist.fill(uniform);
 	r.dist_err = 100;
 	// atempts to imporve performance - if updating too much as once, will lead to instability
 	// use float instead of doubles to improve performance
-	Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
+	// Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
 	// Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
 	// MatrixXd tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
 	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
@@ -248,10 +248,10 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// r.stat_dist = stat_dist.cast <double> ();
 	// QR decompostion - in fact similar performance
 	// A_MAT - EYE and then last row is all ones. (states+1, states) matrix. RHS is (states+1) 0-vector except last entry =1 
-	Eigen::MatrixXf A(p.NA*p.NZ+1, p.NA*p.NZ);
-	A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = tmp_a_mat - Eigen::MatrixXf::Identity(p.NA*p.NZ, p.NA*p.NZ);
-	A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXf::Ones(1, p.NA*p.NZ);
-	Eigen::MatrixXf b = Eigen::MatrixXf::Zero(p.NA*p.NZ+1, 1);
+	Eigen::MatrixXd A(p.NA*p.NZ+1, p.NA*p.NZ);
+	A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = r.a_change_mat - Eigen::MatrixXd::Identity(p.NA*p.NZ, p.NA*p.NZ);
+	A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXd::Ones(1, p.NA*p.NZ);
+	Eigen::MatrixXd b = Eigen::MatrixXd::Zero(p.NA*p.NZ+1, 1);
 	b(p.NA*p.NZ) = 1;
 	// then QR solve
 	stat_dist = A.householderQr().solve(b);
@@ -262,12 +262,12 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// sp_dist = solver.solve(spb);
 	// stat_dist = Eigen::MatrixXf(sp_dist);
 
-	r.stat_dist = stat_dist.cast <double> ();
+	r.stat_dist = stat_dist;
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
 	r.agg_cap = 0;
-	const double gold = (sqrt(5) + 1) / 2, ratio = 0.4;
+	double ratio = 1.;
 	for (size_t aidx=0; aidx < p.NA; ++aidx){
 		for (size_t zidx=0; zidx< p.NZ; ++zidx){
 			r.agg_cap += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
@@ -279,15 +279,21 @@ void aiyagari::beta_error(RESULT &r, PARAM p){
 	}
     aiyagari::calc_moment(r, p);
     //TODO: check the direction
-	if (r.implied_interest - p.interest < 0.){
-		r.high_beta = r.high_beta- ratio*(r.high_beta-r.low_beta)/gold;
-		r.beta = (r.high_beta+r.low_beta)/2;
+	double error = r.agg_cap - p.targeted_ak;
+	if (abs(error) < 1. ){
+		ratio = abs(error);
+	}  else if (abs(error) < .1){
+		ratio = abs(error);
+	}
+	if (error> 0.){
+		r.high_beta = r.high_beta- ratio*(r.high_beta-r.beta);
+		r.beta = (r.high_beta+r.low_beta)/2.;
 	}else {
-		r.low_beta = r.low_beta+ ratio*(r.high_beta-r.low_beta)/gold; 
-		r.beta = (r.high_beta+r.low_beta)/2;
+		r.low_beta = r.low_beta+ ratio*(r.beta-r.low_beta); 
+		r.beta = (r.high_beta+r.low_beta)/2.;
 
 	}
-	r.beta_err = abs(r.implied_interest - p.interest);
+	r.beta_err = abs(error);
 	// r.beta_err = abs(r.agg_cap - p.targeted_ak);
 	// r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
 	cout << r.implied_interest << "interest" << "\n";
@@ -512,4 +518,16 @@ void aiyagari::write_all (RESULT r, PARAM p,string dir){
 		fs << r.pfunc;
 	}
 	fs.close();
+	aiyagari::write_result(r, "RESULT");
+}
+
+void aiyagari::write_result(RESULT r, std::string fname){
+	void* buffer = malloc(sizeof (r));
+	int fd = open(fname, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR);
+	if (fd < 0) {
+		printf("Error opening file\n");
+		return 1;
+	}
+	memcpy(buffer, &r, sizeof (r));
+	write(fd2, buffer, sizeof (r));
 }
