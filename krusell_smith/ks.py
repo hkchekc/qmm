@@ -16,6 +16,7 @@ while r.rsq < 0.98 or r.error > 1e-5:
     calc_errors(p, r)
     end = time()
     print("Elapse time is {} s".format(end-start))
+    r.it += 1
 
 end = time()
 print("Elapse time is {} s".format(end-big_start))

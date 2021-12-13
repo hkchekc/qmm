@@ -1,6 +1,6 @@
 import numpy as np
 from numpy import random
-from numba import njit
+from numba import njit, jit
 from scipy import interpolate
 from statsmodels import api
 
@@ -41,6 +41,7 @@ class res:
     def __init__(self):
         # initial guess
         p = param()
+        self.it = 0
         self.intercept = np.array([0.01, 0.01])
         self.slope = np.array([.99, 0.99])
         self.interest = np.zeros((p.NAK, p.NZ))
@@ -98,10 +99,11 @@ def vfi(p, r):
     util_arr[mx] = (np.power(consum_arr[mx], 1- p.gamma) -1.)/(1-p.gamma)
 
     err_vfi = 100.
-    r.vfunc = np.amax(util_arr, axis=4)  # initial guess
-    r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int8)
+    if r.it == 0:
+        r.vfunc = np.amax(util_arr, axis=4)  # initial guess
+        r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int8)
     while err_vfi > 1e-2:
-        err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, p.markov)
+        err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, p.markov, p.amarkov, p.ymarkov)
         # print(err_vfi)
     print(p.k_grid[r.pfunc[0,0,0,0]])
     print(p.k_grid[r.pfunc[-1,-1,-1,-1]])
@@ -167,7 +169,7 @@ def _get_coh(NK, NY, NAK, NZ, interest_arr, ind_states, k_grid, wage_arr):
     #     for yi in range(NY):
     #         coh_arr[ki, yi, :, :] = tmp_cap_gain + wage_arr*ind_states[yi]
     for ki in range(NK):
-        tmp_cap_gain = interest_arr*k_grid[ki]
+        tmp_cap_gain = interest_arr*k_grid[ki]  # interest - (NAK x NZ)
         for yi in range(NY):
             coh_arr[ki, yi, :, :] = tmp_cap_gain + wage_arr*ind_states[yi]
     return coh_arr
@@ -180,8 +182,8 @@ def  _get_consum_arr(NK, NY, NAK, NZ, coh_arr, k_grid):
     util_arr = np.ones((NK, NY, NAK, NZ, NK)) * -1e3
     return consum_arr, util_arr
 
-def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
-    exp_next_u_no_current = _construct_next_vfunc_tmp(vfunc, ak_est, ak_grid, NK, NY, NAK, NZ, markov)
+def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov, zmarkov, ymarkov):
+    exp_next_u_no_current = _construct_next_vfunc_tmp(vfunc, ak_est, ak_grid, NK, NY, NAK, NZ, markov, zmarkov, ymarkov)
     exp_next_u =np.tile(exp_next_u_no_current, (NK, 1, 1, 1, 1))
     vfunc_tmp = util_arr + beta*exp_next_u
     pfunc = np.argmax(vfunc_tmp, axis=4)
@@ -189,11 +191,14 @@ def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov):
     error = np.max(np.abs(vfunc_new - vfunc))
     return error, pfunc, vfunc_new
 
-def _construct_next_vfunc_tmp(vfunc, ak_est, ak_grid, NK, NY, NAK, NZ, markov):
-    # exp_next_u_no_current = np.zeros((NY, NAK, NZ, NK))
-    tmp_arr = _contstruct_tmr_vfunc(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc)
-    exp_next_u_no_current = np.tensordot(markov, tmp_arr, axes=1)
-    exp_next_u_no_current = exp_next_u_no_current[:NY, :, :, :]
+@njit
+def _construct_next_vfunc_tmp(vfunc, ak_est, ak_grid, NK, NY, NAK, NZ, markov, zmarkov, ymarkov):
+    exp_next_u_no_current = np.zeros((NY, NAK, NZ, NK))
+    # tmp_arr = _contstruct_tmr_vfunc(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc)
+    tmp_arr = _contstruct_tmr_vfunc2(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc, zmarkov).reshape(NY, NAK*NZ*NK)
+    exp_next_u_no_current = np.dot(ymarkov, tmp_arr).reshape(NY, NAK, NZ, NK)
+    # exp_next_u_no_current = np.tensordot(markov, tmp_arr, axes=1)
+    # exp_next_u_no_current = exp_next_u_no_current[:NY, :, :, :]
     #
     # for nzi in range(NZ):
     #     for nyi in range(NY):
@@ -205,7 +210,7 @@ def _construct_next_vfunc_tmp(vfunc, ak_est, ak_grid, NK, NY, NAK, NZ, markov):
     #                     for yi in range(NY):
     #                         this_idx = zi * NY + yi
     #                         exp_next_u_no_current[yi, aki, zi, kpi] += markov[this_idx, next_idx]*tmp
-    return exp_next_u_no_current # 4 dimensional object
+    return exp_next_u_no_current # 4 dimensional object (current k doesn't matter )
 
 @njit
 def _contstruct_tmr_vfunc(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc):
@@ -217,6 +222,15 @@ def _contstruct_tmr_vfunc(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc):
                 tmr_vfunc[next_idx, :, :, kpi] = np.interp(ak_est, ak_grid, vfunc[kpi, nyi, :, nzi])
     return tmr_vfunc
 
+@njit
+def _contstruct_tmr_vfunc2(NK, NAK, NZ, NY, ak_est, ak_grid, vfunc, zmarkov):
+    tmr_vfunc = np.zeros((NY, NAK, NZ, NK))
+    for nzi in range(NZ):
+        for nyi in range(NY):
+            for kpi in range(NK):
+                this_val = np.interp(ak_est, ak_grid, vfunc[kpi, nyi, :, nzi])  # NAK x NZ (current z) wrong
+                tmr_vfunc[nyi, :, :, kpi] += this_val[:, :]*zmarkov[:, nzi]
+    return tmr_vfunc
 
 def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision, sim_small_k, sim_ak):
     for tidx in range(1, net_time):
