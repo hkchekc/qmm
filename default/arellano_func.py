@@ -15,7 +15,7 @@ class Param:
         self.NZ = len(self.states)
         self.b_grid = np.linspace(0., 2., num=150)
         # Functions Parameters
-        self.egm = False
+        self.egm = True
         self.EV_shock = True
         self.crit_q = 1e-3
         self.crit_vfi = 1e-3
@@ -31,6 +31,8 @@ class Res:
         self.dfunc = np.zeros((param.NB, param.NZ)).astype(np.int8)
         self.vfunc_def = np.zeros(param.NZ)
         self.err_q = 100.
+        if param.egm:
+            self.consum_arr = np.ones((param.NB, param.NZ))
 
 
 def vfi(r, p):
@@ -72,21 +74,30 @@ def calc_q(r, p):
 def egm(r, p):
     error_vfi = 100.
     it = 0
+    # populate v_d
+    for zi in range(p.NZ):
+        tmp = -p.markov[0,0]/(p.states[0]-p.tau) - p.markov[0,1]/(p.states[1]-p.tau)
+        r.vfunc_def[zi] = -1./(p.states[zi]-p.tau) + p.beta*tmp/(1-p.beta)
+        # start iteration
     while error_vfi > p.crit_vfi:
-        _find_next_c()
-        error_vfi = np.max(np.abs(vfunc_def_new-r.vfunc_def))
-        r.vfunc_def = vfunc_def_new
+        vfunc_clean_new, consum_arr_new = _find_next_c(p.NB, p.NZ, p.alpha, p.markov,
+                                    p.interest, p.beta, p.states, p.b_grid, r.consum_arr, r.vfunc_def, r.vfunc_clean, r.q, r.vfunc_o)
+
+        vfunc_o_new, r.dfunc = _pop_vfunc_o_shock(r.vfunc_def, vfunc_clean_new, p.NB, p.NZ, p.euler_gamma, p.alpha)
+        error_vfi = np.max(np.abs(vfunc_o_new-r.vfunc_o))
+        r.vfunc_o = vfunc_o_new
         r.vfunc_clean = vfunc_clean_new
         it += 1
         if it % 50 == 0:
             print("Error of VFI at loop {} is {}".format(it, error_vfi))
 
 
-def _find_next_c():
+def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_arr, vfunc_def, vfunc_clean, q, vfunc_o):
     consum_arr_new = np.zeros((NB, NZ))
     prob_arr = np.zeros(NZ)
     q_deriv_arr = np.zeros((NB, NZ))
     implied_current_debt = np.zeros((NB, NZ))
+    vfunc_clean_new = np.zeros((NB, NZ))
     for nbi in range(NB):
         # calculate the probabilities
         for nzi in range(NZ):
@@ -94,7 +105,7 @@ def _find_next_c():
         # find derivative of Q wrt b'
         for zi in range(NZ):  # zi in fact drop out for q, because of iid
             for nzi in range(NZ):
-                q_deriv_arr[nbi, zi] += markov[zi, nzi]*prob_arr[nzi]*(1.-
+                q_deriv_arr[nbi, zi] += markov[zi, nzi]*prob_arr[nzi]*(1. -
                                         alpha*(1-prob_arr[nzi])/(consum_arr[nbi, nzi]**2))
             q_deriv_arr[nbi, zi] /= interest
             for nzi in range(NZ):
@@ -103,16 +114,15 @@ def _find_next_c():
             consum_arr_new[nbi, zi] /= q_deriv_arr[nbi, zi]
             consum_arr_new[nbi, zi] = 1/np.power(consum_arr_new[nbi, zi], .5)
             implied_current_debt[nbi, zi] = states[zi] + q[nbi, zi] - consum_arr_new[nbi, zi]
-    exo_future_debt = np.zeros((NB, NZ))
-    exo_consum = np.zeros((NB, NZ))
+    exo_future_debt = np.zeros((NB, NZ))  # b'(b, y)
+    exo_consum = np.zeros((NB, NZ)) # c(b, y)
     for zi in range(NZ):
         exo_future_debt[:, zi] = np.interp(b_grid, implied_current_debt[:, zi], b_grid)  # flipped around
     for zi in range(NZ):
         exo_consum[:, zi] = np.interp(exo_future_debt[:, zi], consum_arr_new[:, zi], b_grid)  # flipped around
-    # TODO: consider when is default 
-
-
-
+    mask = 
+    vfunc_clean_new = -1./exo_consum + beta*vfunc_o  # increment to new vf
+    return vfunc_clean_new, exo_consum
 
 
 @njit

@@ -7,7 +7,7 @@ r = Res()
 r.err_q = 100.
 while r.err_q > p.crit_q:
     if p.egm and p.EV_shock:
-        pass
+        egm(r, p)
     else:
         vfi(r, p)
     calc_q(r, p)
