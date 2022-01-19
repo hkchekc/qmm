@@ -6,8 +6,8 @@ beta = .99
 k = .25
 phi = 1.5
 
-sigma_u = np.sqrt(.01)
-sigma_eta = np.sqrt(1)
+sigma_u = np.sqrt(.001)
+sigma_eta = np.sqrt(.001)
 
 T = 20
 a0 = 0.
@@ -41,11 +41,11 @@ K = one_step_var/(one_step_var+sigma_eta**2)
 eat = np.zeros(T)
 for ti in range(T):
     if ti != 0:
-        last_eat = at[ti - 1]
+        last_eat = eat[ti - 1]
     else:
         last_eat = a0
     eat[ti] = last_eat + K[ti]*(st[ti]-last_eat)
-
+print(eat)
 plt.plot( np.arange(T),y, color='blue', label="perfect information y")
 plt.plot( np.arange(T), eat , color='green', label="common imperfect y")
 plt.legend()
