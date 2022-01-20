@@ -1,5 +1,6 @@
 import numpy as np
 from numba import jit, njit
+from scipy import interpolate
 
 class Param:
 
@@ -32,7 +33,7 @@ class Res:
         self.vfunc_def = np.zeros(param.NZ)
         self.err_q = 100.
         if param.egm:
-            self.consum_arr = np.ones((param.NB, param.NZ))
+            self.consum_arr = np.zeros((param.NB, param.NZ))
 
 
 def vfi(r, p):
@@ -78,7 +79,13 @@ def egm(r, p):
     for zi in range(p.NZ):
         tmp = -p.markov[0,0]/(p.states[0]-p.tau) - p.markov[0,1]/(p.states[1]-p.tau)
         r.vfunc_def[zi] = -1./(p.states[zi]-p.tau) + p.beta*tmp/(1-p.beta)
-        # start iteration
+    # initial guess consumption
+    for zi in range(p.NZ):
+        r.consum_arr[:, zi] = p.states[zi] + p.b_grid[:]
+    r.consum_arr[r.consum_arr <= 0.] = 0.01
+    # init vo
+    r.vfunc_o =np.ones((p.NB, p.NZ)) * -5.
+    # start iteration
     while error_vfi > p.crit_vfi:
         vfunc_clean_new, consum_arr_new = _find_next_c(p.NB, p.NZ, p.alpha, p.markov,
                                     p.interest, p.beta, p.states, p.b_grid, r.consum_arr, r.vfunc_def, r.vfunc_clean, r.q, r.vfunc_o)
@@ -87,9 +94,11 @@ def egm(r, p):
         error_vfi = np.max(np.abs(vfunc_o_new-r.vfunc_o))
         r.vfunc_o = vfunc_o_new
         r.vfunc_clean = vfunc_clean_new
+        r.consum_arr = consum_arr_new
         it += 1
         if it % 50 == 0:
             print("Error of VFI at loop {} is {}".format(it, error_vfi))
+
 
 
 def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_arr, vfunc_def, vfunc_clean, q, vfunc_o):
@@ -97,31 +106,87 @@ def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_a
     prob_arr = np.zeros(NZ)
     q_deriv_arr = np.zeros((NB, NZ))
     implied_current_debt = np.zeros((NB, NZ))
-    vfunc_clean_new = np.zeros((NB, NZ))
+    exo_future_debt = np.zeros((NB, NZ))  # b'(b, y)
+    exo_consum = np.zeros((NB, NZ))  # c(b, y)
     for nbi in range(NB):
         # calculate the probabilities
         for nzi in range(NZ):
-            prob_arr[nzi] = 1/ (1. + np.exp(alpha * (vfunc_def[nzi] - vfunc_clean[nbi, nzi])))
+            prob_arr[nzi] = 1. / (1. + np.exp(alpha * (vfunc_def[nzi] - vfunc_clean[nbi, nzi])))
         # find derivative of Q wrt b'
         for zi in range(NZ):  # zi in fact drop out for q, because of iid
             for nzi in range(NZ):
                 q_deriv_arr[nbi, zi] += markov[zi, nzi]*prob_arr[nzi]*(1. -
                                         alpha*(1-prob_arr[nzi])/(consum_arr[nbi, nzi]**2))
-            q_deriv_arr[nbi, zi] /= interest
+    q_deriv_arr /= interest
+    # populate consumption arr
+    for nbi in range(NB):
+        for zi in range(NZ):  
             for nzi in range(NZ):
                 consum_arr_new[nbi, zi] += markov[zi, nzi]*prob_arr[nzi]/(consum_arr[nbi, nzi]**2)
             consum_arr_new[nbi, zi] *= beta
             consum_arr_new[nbi, zi] /= q_deriv_arr[nbi, zi]
             consum_arr_new[nbi, zi] = 1/np.power(consum_arr_new[nbi, zi], .5)
             implied_current_debt[nbi, zi] = states[zi] + q[nbi, zi] - consum_arr_new[nbi, zi]
-    exo_future_debt = np.zeros((NB, NZ))  # b'(b, y)
-    exo_consum = np.zeros((NB, NZ)) # c(b, y)
+    # integrity check - if not concave
+    # form v' array
+    v_prime = -1./(consum_arr_new**2)
     for zi in range(NZ):
-        exo_future_debt[:, zi] = np.interp(b_grid, implied_current_debt[:, zi], b_grid)  # flipped around
+        # find jump (assume one jump)
+        # find v max v_min
+        v_max = 0.
+        gap_max = 0
+        gap_min = 0
+        v_min = 0
+        for bi in range(1, NB):
+            if v_prime[bi-1, zi] < v_prime[bi, zi]:
+                v_max = v_prime[bi-1, zi]
+                gap_min = bi-1
+                gap_max = bi
+                v_min = v_prime[bi, zi]
+                break
+        a_max = NB - 1
+        for bi in range(gap_max, NB):  # find b max
+            if v_max > v_prime[bi, zi]:
+                a_max = bi
+                break
+        a_min = 0
+        for bi in range(1, gap_min):  # find b max
+            if v_min < v_prime[bi, zi]:
+                a_min = bi - 1
+                break
+        # check for max b' on [bmin, bmax]
+
+        mask = q_deriv_arr[:, zi] > 0.  # consumption undefined
+        #
+        # exo_future_debt[:, zi] = np.interp(b_grid, implied_current_debt[:, zi][mask], b_grid[mask])  # flipped around
+        # # map consumption from b' to b
+        # exo_consum[:, zi] = np.interp(exo_future_debt[:, zi], b_grid[mask], consum_arr_new[:, zi][mask])
+        debt_f = interpolate.interp1d(implied_current_debt[:, zi][mask], b_grid[mask], fill_value="extrapolate")
+        consum_f = interpolate.interp1d(b_grid[mask], consum_arr_new[:, zi][mask], fill_value="extrapolate")
+        exo_future_debt[:, zi] = debt_f(b_grid)
+        exo_consum[:, zi] = consum_f(exo_future_debt[:, zi])
+        # # not concave
+        # for bi, future_debt in enumerate(exo_future_debt[:, zi]):
+        #     if not (b_grid[a_min] <= future_debt <= b_grid[a_max]):
+        #         continue
+        #     # bellman
+        #     this_max_util = -100.
+        #     for nbi in range(a_min, a_max):
+        #         consum = states[zi] + q[nbi, zi] - b_grid[bi]
+        #         if consum > 0.:
+        #             nu = 0.
+        #             for nzi in range(NZ):
+        #                 nu += markov[zi, nzi]*vfunc_o[nbi, nzi]
+        #             nu *= beta
+        #             util = nu - 1./consum
+        #             if util > this_max_util:
+        #                 this_max_util = util
+        #                 exo_consum[bi, zi] = consum
+
+
+    vfunc_clean_new = -1./exo_consum
     for zi in range(NZ):
-        exo_consum[:, zi] = np.interp(exo_future_debt[:, zi], consum_arr_new[:, zi], b_grid)  # flipped around
-    mask = 
-    vfunc_clean_new = -1./exo_consum + beta*vfunc_o  # increment to new vf
+        vfunc_clean_new[:, zi] += beta * markov[0, zi] * vfunc_o[:, zi]  # increment to new vf
     return vfunc_clean_new, exo_consum
 
 
