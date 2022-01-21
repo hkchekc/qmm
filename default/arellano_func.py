@@ -102,10 +102,10 @@ def egm(r, p):
 
 
 def u_prime(consum):
-    return consum**-2 + (consum<=0)*10000
+    return 1/consum**2 + (consum<=0)*100000
 
 def util_func(consum):
-    return -1/consum - (consum<=0)*10000
+    return -1/consum - (consum<=0)*100000
 
 def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_arr, vfunc_def, vfunc_clean, q, vfunc_o):
     exo_future_debt = np.zeros((NB, NZ))  # b'(b, y) policy function
@@ -128,7 +128,9 @@ def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_a
     implied_current_debt = np.zeros((NB, NZ))
     for zi in range(NZ):
         implied_current_debt[:, zi] = states[zi] + q_masked[:, zi] - consum_arr_new[:, zi]
+
     consum_mask = ~np.isnan(consum_arr_new[:, :])
+
     q_masked = np.where(consum_mask, q, np.nan)
     vfunc_o_masked = np.where(consum_mask, vfunc_o, np.nan)
     for zi in range(NZ):
@@ -162,10 +164,11 @@ def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_a
             nb_idx_li.append(_find_nearest(b_grid, exo_future_debt[bi, zi]))
         exo_consum[:, zi] = states[zi] + q[nb_idx_li, zi] - b_grid
         another_mask = exo_consum[:, zi] > 0
-        exo_consum[:, zi][~another_mask] = .000001
+        # exo_consum[:, zi][~another_mask] = .000001
         vfunc_clean_new[:, zi] = -100.
         # if best consumption not over 0, default
-        vfunc_clean_new[:, zi][another_mask] = util_func(exo_consum[:, zi])[another_mask]+beta*(markov[zi, 0]*vfunc_o[nb_idx_li, 0]+markov[zi, 1]*vfunc_o[nb_idx_li, 1])[another_mask]
+        vfunc_clean_new[:, zi][another_mask] = util_func(exo_consum[:, zi])[another_mask]+beta*(markov[zi, 0]*vfunc_o
+        [nb_idx_li, 0]+markov[zi, 1]*vfunc_o[nb_idx_li, 1])[another_mask]
 
     return vfunc_clean_new, exo_consum
 
@@ -202,7 +205,7 @@ def _non_concavity(NB, NZ, markov, beta, b_grid, states, vfunc_o, q, v_prime, ex
             if nbi in concave_li:
                 continue
             # bellman
-            this_max_util = beta*(markov[zi, 0]*vfunc_o[nbi, 0]+markov[zi, 1]*vfunc_o[nbi, 1]) - 1./exo_consum[nbi, zi]
+            this_max_util = beta*(markov[zi, 0]*vfunc_o[nbi, 0]+markov[zi, 1]*vfunc_o[nbi, 1]) +util_func(exo_consum[nbi, zi])
             this_implied_current_b = states[zi] + q[nbi, zi] - exo_consum[nbi, zi]
             # if suboptimal at the implied b, then we drop the b' and activate the b'
             other_consum = states[zi] + q[non_concave_li, zi] - this_implied_current_b
