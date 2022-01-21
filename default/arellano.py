@@ -14,7 +14,7 @@ while r.err_q > p.crit_q:
         vfi(r, p)
         calc_q(r, p)
     print("Q Error is {}".format(r.err_q))
-    if bigit == 10:
+    if bigit == 0:
         break
     bigit += 1
 
@@ -22,8 +22,8 @@ while r.err_q > p.crit_q:
 
 # Plotting
 fig = plt.figure(1)
-plt.plot( p.b_grid ,r.vfunc_o[:,0], color='blue', label="clean, low state")
-plt.plot( p.b_grid,r.vfunc_o[:,1], color='green', label="clean, high state")
+plt.plot( p.b_grid, r.vfunc_o[:,0], color='blue', label="clean, low state")
+plt.plot( p.b_grid, r.vfunc_o[:,1], color='green', label="clean, high state")
 plt.legend()
 plt.suptitle("Value Functions - VFI, EV Taste Shock")
 plt.tight_layout()

@@ -70,7 +70,7 @@ def calc_q(r, p):
                     risk += p.markov[zi, nzi]*r.dfunc[nbi, nzi]
                 q_zero_arr[nbi, zi] = (1. - risk)/p.interest * p.b_grid[nbi]
     r.err_q = np.max(np.abs(r.q - q_zero_arr))
-    r.q[:] = q_zero_arr
+    r.q[:, :] = q_zero_arr
 
 
 def egm(r, p):
@@ -80,11 +80,11 @@ def egm(r, p):
     for zi in range(p.NZ):
         tmp = -p.markov[0,0]/(p.states[0]-p.tau) - p.markov[0,1]/(p.states[1]-p.tau)
         r.vfunc_def[zi] = -1./(p.states[zi]-p.tau) + p.beta*tmp/(1-p.beta)
-    r.vfunc_o = np.ones((p.NB, p.NZ)) * -5.
+    r.vfunc_o = np.zeros((p.NB, p.NZ))
     # initial guess consumption
     for zi in range(p.NZ):
-        r.consum_arr[:, zi] = p.states[zi] + p.b_grid[:]/(1.- p.beta)
-    r.consum_arr[r.consum_arr <= 0.] = 0.01
+        r.consum_arr[:, zi] = p.states[zi] + p.b_grid[:]*(1/p.interest - 1.)
+    # r.consum_arr[r.consum_arr <= 0.] = 0.01
     # start iteration
     while error_vfi > p.crit_vfi:
         calc_q(r, p)
@@ -99,74 +99,74 @@ def egm(r, p):
         it += 1
         if it % 100 == 0:
             print("Error of VFI at loop {} is {}".format(it, error_vfi))
-            break
 
+
+def u_prime(consum):
+    return consum**-2 + (consum<=0)*10000
+
+def util_func(consum):
+    return -1/consum - (consum<=0)*10000
 
 def _find_next_c(NB, NZ, alpha, markov, interest, beta, states, b_grid, consum_arr, vfunc_def, vfunc_clean, q, vfunc_o):
     exo_future_debt = np.zeros((NB, NZ))  # b'(b, y) policy function
     exo_consum = np.zeros((NB, NZ))  # c(b, y)  consumption policy
-    vfunc_clean_new = np.ones((NB, NZ)) * -100  # value function
     prob_arr = _get_prob_arr(NB, NZ, alpha, vfunc_def, vfunc_clean)
-    v_prime = - markov[0, 0]*prob_arr[:, 0]/(consum_arr[:, 0] ** 2) - markov[0, 1] *prob_arr[:, 1] / (consum_arr[:, 1] ** 2)  # EV'
+    v_prime = markov[0, 0]*prob_arr[:, 0]*u_prime(consum_arr[:, 0]) + markov[0, 1] *prob_arr[:, 1]*u_prime(consum_arr[:, 1])  # EV'
 
     q_deriv_arr = _get_q_derivative(NB, NZ, alpha, markov, interest, b_grid, consum_arr, prob_arr)
+
     qb_mask = q_deriv_arr > 0.
     # populate consumption arr
     consum_arr_new = _get_consumption(NB, NZ, beta, markov, prob_arr, consum_arr,  q_deriv_arr)
+
     consum_arr_new = np.where(qb_mask, consum_arr_new, np.nan)  # keep shape while trimming
+    q_masked = np.where(qb_mask, q, np.nan)
+    vfunc_o_masked = np.where(qb_mask, vfunc_o, np.nan)
     # not all b' grid points are optimal, some are never optimal - check and drop those
-    consum_arr_new, drop_mask = _non_concavity(NB, NZ, markov, beta, b_grid, states, vfunc_o, q, v_prime, consum_arr_new)
+    consum_arr_new, drop_mask = _non_concavity(NB, NZ, markov, beta, b_grid, states, vfunc_o_masked, q_masked, v_prime, consum_arr_new)
+
     implied_current_debt = np.zeros((NB, NZ))
     for zi in range(NZ):
-        implied_current_debt[:, zi] = states[zi] + q[:, zi] - consum_arr_new[:, zi]
-    # implied_current_debt = np.where(drop_mask, implied_current_debt, np.nan)
-    # TODO: mask for implied current debt? (no negative) - fix consumption too high
+        implied_current_debt[:, zi] = states[zi] + q_masked[:, zi] - consum_arr_new[:, zi]
+    consum_mask = ~np.isnan(consum_arr_new[:, :])
+    q_masked = np.where(consum_mask, q, np.nan)
+    vfunc_o_masked = np.where(consum_mask, vfunc_o, np.nan)
     for zi in range(NZ):
-        # consum_arr_new[:, zi] = np.where(consum_arr_new[:, zi] > 0., consum_arr_new[:, zi], np.nan)  # consumption undefined or =0 etc.
+        consum_arr_new[:, zi] = np.where(consum_arr_new[:, zi] > 0., consum_arr_new[:, zi], np.nan)  # consumption undefined or =0 etc.
         mask = ~np.isnan(consum_arr_new[:, zi])
         # map consumption from b' to b
         try:  # if only 1 element in the masked array (all nans)
             debt_f = interpolate.interp1d(implied_current_debt[:, zi][mask], b_grid[mask]) # no , fill_value="extrapolate"
             for bi in range(NB):  # perform extrapolation manually, falling back to VFI
-                if implied_current_debt[:, zi][mask][0] <= b_grid[bi] <= implied_current_debt[:, zi][mask][-1]:
-                    exo_future_debt[bi, zi] = debt_f(b_grid[bi])
+                if b_grid[bi] < implied_current_debt[:, zi][mask][0] or b_grid[bi] > implied_current_debt[:, zi][mask][-1]:
+                    future_bidx = np.argmax(util_func(states[zi]-b_grid[bi]+q_masked[:, zi])+beta*(markov[zi, 0]
+                                                                    *vfunc_o_masked[:, 0]+markov[zi, 1]*vfunc_o_masked[:, 1]))
+                    exo_future_debt[bi, zi] = b_grid[future_bidx]
                 elif b_grid[bi] < implied_current_debt[0, zi]:
                     exo_future_debt[bi, zi] = b_grid[0]
                 else:
-                    future_bidx = np.argmax(-1./(states[zi]-b_grid[bi]+q[:, zi])+beta*(markov[zi, 0]
-                                                                    *vfunc_o[:, 0]+markov[zi, 1]*vfunc_o[:, 1]))
-                    exo_future_debt[bi, zi] = b_grid[future_bidx]
+                    exo_future_debt[bi, zi] = debt_f(b_grid[bi])
             # consum_f = interpolate.interp1d(implied_current_debt[:, zi][mask], consum_arr_new[:, zi][mask], fill_value="extrapolate")
             # print("Trues in mask after suboptimal drops {}".format(sum(mask)))
         except ValueError:
             pass
-
         ###############################################################################################################
         ##################################exogenous part - b' based to b ##############################################
         ###############################################################################################################
         # catch over-grid
-        # exo_future_debt[:, zi] = debt_f(b_grid)
-        # exo_future_debt[:, zi][exo_future_debt[:, zi] > b_grid[-1]] = b_grid[-1]  # assume monotonic
-        # exo_future_debt[:, zi][exo_future_debt[:, zi] < b_grid[0]] = b_grid[0]
         # exo_consum[:, zi] = consum_f(b_grid)
-
+    vfunc_clean_new = np.zeros((NB, NZ)) # value function
+    for zi in range(NZ):
         nb_idx_li = []
         for bi in range(NB):
             nb_idx_li.append(_find_nearest(b_grid, exo_future_debt[bi, zi]))
         exo_consum[:, zi] = states[zi] + q[nb_idx_li, zi] - b_grid
-        # coh_mask =  states[zi]+q[nb_idx_li, zi] - b_grid
         another_mask = exo_consum[:, zi] > 0
         exo_consum[:, zi][~another_mask] = .000001
-        # exo_consum[:, zi][exo_consum[:, zi] > coh_mask] = coh_mask[exo_consum[:, zi] > coh_mask]
         vfunc_clean_new[:, zi] = -100.
         # if best consumption not over 0, default
-        vfunc_clean_new[:, zi][another_mask] = -1./exo_consum[:, zi][another_mask]
-        for bi in range(NB):
-            if not another_mask[bi]:  # if consumption not over 0, use default value anyway
-                continue
-            nb_idx = _find_nearest(b_grid, exo_future_debt[bi, zi])
-            for nzi in range(NZ):
-                vfunc_clean_new[bi, zi] += beta*markov[zi, nzi]*vfunc_o[nb_idx, nzi]
+        vfunc_clean_new[:, zi][another_mask] = util_func(exo_consum[:, zi])[another_mask]+beta*(markov[zi, 0]*vfunc_o[nb_idx_li, 0]+markov[zi, 1]*vfunc_o[nb_idx_li, 1])[another_mask]
+
     return vfunc_clean_new, exo_consum
 
 
@@ -185,7 +185,7 @@ def _non_concavity(NB, NZ, markov, beta, b_grid, states, vfunc_o, q, v_prime, ex
     if v_prime[0] < np.min(v_prime[1:]):
         concave_li.append(0)
     else:
-        non_concave_li.append(1)
+        non_concave_li.append(0)
     for bi in range(1, NB-1):
         if np.max(v_prime[:bi]) < v_prime[bi] and v_prime[bi] < np.min(v_prime[bi+1:]):
             concave_li.append(bi)
@@ -206,7 +206,7 @@ def _non_concavity(NB, NZ, markov, beta, b_grid, states, vfunc_o, q, v_prime, ex
             this_implied_current_b = states[zi] + q[nbi, zi] - exo_consum[nbi, zi]
             # if suboptimal at the implied b, then we drop the b' and activate the b'
             other_consum = states[zi] + q[non_concave_li, zi] - this_implied_current_b
-            other_util = -1./other_consum + beta*(markov[zi, 0]*vfunc_o[non_concave_li, 0]+markov[zi, 1]*vfunc_o[non_concave_li, 1])
+            other_util = util_func(other_consum) + beta*(markov[zi, 0]*vfunc_o[non_concave_li, 0]+markov[zi, 1]*vfunc_o[non_concave_li, 1])
             compare_util = np.sum(other_util > this_max_util)
             if compare_util == 0:
                 continue
@@ -220,7 +220,7 @@ def _get_consumption(NB, NZ, beta, markov, prob_arr, consum_arr,  q_deriv_arr):
     for zi in range(NZ):
         for nbi in range(NB):
             for nzi in range(NZ):
-                consum_arr_new[nbi, zi] += markov[zi, nzi] * prob_arr[nbi, nzi] / (consum_arr[nbi, nzi] ** 2)
+                consum_arr_new[nbi, zi] += markov[zi, nzi] * prob_arr[nbi, nzi] *u_prime(consum_arr[nbi, nzi])
     consum_arr_new *= beta
     consum_arr_new /= q_deriv_arr
     consum_arr_new = consum_arr_new**(-1./2.)
@@ -234,7 +234,7 @@ def _get_q_derivative(NB, NZ, alpha, markov, interest, b_grid, consum_arr, prob_
         for zi in range(NZ):  # zi in fact drop out for q, because of iid
             for nzi in range(NZ):
                 q_deriv_arr[nbi, zi] += markov[zi, nzi]*prob_arr[nbi, nzi]*(1. -
-                                        alpha*b_grid[nbi]*(1-prob_arr[nbi, nzi])/(consum_arr[nbi, nzi]**2))
+                                        alpha*b_grid[nbi]*(1-prob_arr[nbi, nzi])*u_prime(consum_arr[nbi, nzi]))
     q_deriv_arr /= interest
     return q_deriv_arr
 
