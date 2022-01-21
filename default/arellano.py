@@ -22,12 +22,19 @@ while r.err_q > p.crit_q:
     
 
 # Plotting
+fig = plt.figure(1)
 plt.plot( p.b_grid ,r.vfunc_o[:,0], color='blue', label="clean, low state")
 plt.plot( p.b_grid,r.vfunc_o[:,1], color='green', label="clean, high state")
-# plt.plot( p.b_grid, r.q[:, 1], color='BLACK', label="Q")
 plt.legend()
 plt.suptitle("Value Functions - VFI, EV Taste Shock")
+plt.tight_layout()
+plt.subplots_adjust(top=0.88)
+
+fig = plt.figure(2)
+plt.plot(p.b_grid, r.q[:, 1], color='BLACK', label="Q")
+plt.legend()
 plt.suptitle("Q Laffer, EV Taste Shock")
 plt.tight_layout()
 plt.subplots_adjust(top=0.88)
+
 plt.show()
