@@ -12,8 +12,7 @@ while r.err_q > p.crit_q:
         egm(r, p)
     else:
         vfi(r, p)
-    calc_q(r, p)
-    # cal_moments(r, p)
+        calc_q(r, p)
     print("Q Error is {}".format(r.err_q))
     if bigit == 10:
         break
