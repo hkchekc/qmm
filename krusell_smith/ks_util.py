@@ -8,24 +8,25 @@ class param:
 
     def __init__(self):
         self.rng = random.default_rng(seed=5000)
-        self.beta = .91745
+        self.beta = .917473
         self.gamma = 2.
         self.alpha = 0.36
         self.delta = .06
-        self.k_max = 24.
+        self.k_max = 22.
         self.k_min = 0.
         self.ak_max = 8.3716
         self.ak_min = 2.0929
-        self.ind_states = np.array([0.715494756670886, 1. , 1.39763428128095])
+        self.ind_states = np.array([0.690935359826633, 0.965674945042889 , 1.349660407766035])
         self.agg_states = np.array([.9832, 1.0157])
         self.NH = 3000
         self.NT = 1500
         self.DROP = 20
         self.NZ = self.agg_states.size
         self.NY = self.ind_states.size
-        self.NK = 250
+        self.NK = 1000
         self.NAK = 25
         self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
+        self.k_grid = np.exp(np.linspace(self.k_min, np.log(self.k_max-self.k_min+1.), self.NK)) - 1. + self.k_min
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
         self.markov = np.genfromtxt("input/markov.txt")
         self.amarkov = np.genfromtxt("input/amarkov.txt")
@@ -84,7 +85,7 @@ def _get_prices(ak_grid, zgrid, NAK, NZ, alpha, delta):
     for aki in range(NAK):
         for zi in range(NZ):
             interest[aki, zi] = alpha*zgrid[zi]/(ak_grid[aki]**(1.-alpha)) + 1. - delta
-            wage[aki, zi] = (1.-alpha) * zgrid[zi] / (ak_grid[aki] ** (alpha))
+            wage[aki, zi] = (1.-alpha) * zgrid[zi]* (ak_grid[aki] ** (alpha))
     return interest, wage
 
 def vfi(p, r):
@@ -96,17 +97,17 @@ def vfi(p, r):
     coh_arr = _get_coh(p.NK, p.NY, p.NAK, p.NZ, r.interest, p.ind_states, p.k_grid, r.wage)
     consum_arr, util_arr = _get_consum_arr(p.NK, p.NY, p.NAK, p.NZ, coh_arr, p.k_grid)
     mx = consum_arr > 0
-    util_arr[mx] = (np.power(consum_arr[mx], 1- p.gamma) -1.)/(1-p.gamma)
+    util_arr[mx] = (np.power(consum_arr[mx], 1. - p.gamma))/(1-p.gamma)
 
     err_vfi = 100.
     if r.it == 0:
         r.vfunc = np.amax(util_arr, axis=4)  # initial guess
-        r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int8)
-    while err_vfi > 1e-2:
+        r.pfunc = np.zeros((p.NK, p.NY, p.NAK, p.NZ)).astype(np.int16)
+    while err_vfi > 1e-6:
         err_vfi, r.pfunc, r.vfunc = _vfi(r.vfunc, ak_est, util_arr, p.beta, p.ak_grid, p.NK, p.NY, p.NAK, p.NZ, p.markov, p.amarkov, p.ymarkov)
         # print(err_vfi)
-    print(p.k_grid[r.pfunc[0,0,0,0]])
-    print(p.k_grid[r.pfunc[-1,-1,-1,-1]])
+        # print(p.k_grid[r.pfunc[0,0,0,0]])
+        # print(p.k_grid[r.pfunc[-1,-1,-1,-1]])
 
 def pseudo_panel(p, r):
     net_time = p.NT - p.DROP
@@ -187,7 +188,7 @@ def _vfi(vfunc, ak_est, util_arr, beta, ak_grid, NK, NY, NAK, NZ, markov, zmarko
     exp_next_u =np.tile(exp_next_u_no_current, (NK, 1, 1, 1, 1))
     vfunc_tmp = util_arr + beta*exp_next_u
     pfunc = np.argmax(vfunc_tmp, axis=4)
-    vfunc_new = np.amax(vfunc_tmp, axis=4)  # improve efficiency bt using pfunc
+    vfunc_new = np.amax(vfunc_tmp, axis=4)  # improve efficiency by using pfunc
     error = np.max(np.abs(vfunc_new - vfunc))
     return error, pfunc, vfunc_new
 
@@ -247,3 +248,20 @@ def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision
                 print(sim_small_k[tidx, :][mx], tidx)
         sim_ak[tidx] = np.mean(sim_small_k[tidx, :])
     return sim_ak, sim_small_k
+
+def calc_dist(NA, NY, dist, ymarkov, k_grid, kdecision):
+    # Young's method
+    floor_arr = np.floor((kdecision-k_grid[0])/(k_grid[1]-k_grid[0])).astype(np.int64)
+    ceil_arr = floor_arr + 1
+    ceil_arr[ceil_arr >= NA] = NA-1
+    weight_arr = (k_grid[ceil_arr] - kdecision)/(k_grid[1] - k_grid[0])
+    weight_arr[weight_arr < 0.] = 0.
+    weight_arr[weight_arr > 1.] = 1.
+    new_dist = np.zeros((NA, NY)).astype(np.float32)
+    for ai in range(NA):
+        rel_floor = floor_arr == ai
+        rel_ceil = ceil_arr == ai
+        new_dist += np.matmul((dist*rel_floor.astype(np.float32)*weight_arr).reshape((NY, NA)).T, ymarkov)
+        new_dist += np.matmul((dist*rel_ceil.astype(np.float32)*(1-weight_arr)).reshape((NY, NA)).T, ymarkov)
+        # print("floor is non-zero: {}".format(np.sum(np.count_nonzero(rel_floor))))
+    return new_dist.T.reshape(NA*NY)

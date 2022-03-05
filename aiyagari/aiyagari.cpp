@@ -518,16 +518,15 @@ void aiyagari::write_all (RESULT r, PARAM p,string dir){
 		fs << r.pfunc;
 	}
 	fs.close();
-	aiyagari::write_result(r, "RESULT");
 }
 
-void aiyagari::write_result(RESULT r, std::string fname){
-	void* buffer = malloc(sizeof (r));
-	int fd = open(fname, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR);
-	if (fd < 0) {
-		printf("Error opening file\n");
-		return 1;
-	}
-	memcpy(buffer, &r, sizeof (r));
-	write(fd2, buffer, sizeof (r));
-}
+// void aiyagari::write_result(RESULT r, std::string fname){
+// 	void* buffer = malloc(sizeof (r));
+// 	int fd = open(fname, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR);
+// 	if (fd < 0) {
+// 		printf("Error opening file\n");
+// 		return 1;
+// 	}
+// 	memcpy(buffer, &r, sizeof (r));
+// 	write(fd2, buffer, sizeof (r));
+// }

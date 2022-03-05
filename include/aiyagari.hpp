@@ -12,14 +12,14 @@ using std::vector;
 
 struct PARAM{
 	const double gamma=2.0, delta=0.06, alpha=0.36;
-	const double a_min=0, a_max=24.0;
+	const double a_min=0, a_max=22.0;
 	const double net_agg_asset=0.0;
 	const unsigned NA=1000, NZ=3;
 	vector<double> a_grid = vector<double>(NA);
 	vector<double> states= vector<double>(NZ);
 	MatrixXd markov = MatrixXd(NZ, NZ);
 	const double mu=0, rho=0.95, sigma=0.015;
-    const double vf_crit = 1e-6, beta_crit = 1e-1, dist_crit=1e-7;
+    const double vf_crit = 1e-6, beta_crit = 1e-4, dist_crit=1e-7;
     const double interest = 1.084;
 	const double targeted_ak = 4.18582688958;
     const double calibrated_beta = 0.917493;
