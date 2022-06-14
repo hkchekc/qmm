@@ -188,7 +188,6 @@ MatrixXd bkm::youngs_dist(const PARAM p, const BKM_RES br, const size_t tidx){
     // # pragma omp parallel for
     for (size_t aidx=0; aidx<p.NA; ++aidx){
         for (size_t zidx=0; zidx<p.NZ; ++zidx){
-            cout << this_aprime_pos(aidx, zidx)  << "break\n";
             int int_ver = (int)this_aprime_pos(aidx, zidx);
             pol_floor(aidx, zidx) = int_ver - (int_ver > this_aprime_pos(aidx, zidx) );
             pol_ceil(aidx, zidx) = int_ver + (int_ver < this_aprime_pos(aidx, zidx) );
@@ -197,13 +196,11 @@ MatrixXd bkm::youngs_dist(const PARAM p, const BKM_RES br, const size_t tidx){
     // # pragma omp parallel for
     for (size_t aidx=0; aidx<p.NA; ++aidx){
         for (size_t zidx=0; zidx<p.NZ; ++zidx){
-
             // catch out of bounds
             if (pol_ceil(aidx, zidx) == p.NA){
                 pol_ceil(aidx, zidx) = p.NA -1; 
             }
             if (pol_ceil(aidx, zidx) > p.NA){
-                cout << "";
                 pol_ceil(aidx, zidx) = p.NA -1; 
                 pol_floor(aidx, zidx) =  p.NA -1; 
             }
@@ -211,14 +208,13 @@ MatrixXd bkm::youngs_dist(const PARAM p, const BKM_RES br, const size_t tidx){
     }
     this_mod = this_aprime_pos - pol_floor.cast<double>();
     MatrixXd change_mat_floor=MatrixXd(p.NA*p.NZ, p.NA*p.NZ), change_mat_ceil=MatrixXd(p.NA*p.NZ, p.NA*p.NZ);
-    cout << pol_ceil.size() << "    " << change_mat_ceil.size() << " vor change mat \n";
     aiyagari::get_a_change_mat(change_mat_floor, pol_floor, p);
     aiyagari::get_a_change_mat(change_mat_ceil, pol_ceil, p);
     
-    MatrixXd this_floor_weight = this_mod.replicate(9, 1); // wrong?
-    this_floor_weight.resize(p.NA*p.NZ, p.NA*p.NZ);
+    MatrixXd this_floor_weight = this_mod.replicate(p.NZ, p.NA); // wrong?
+    // this_floor_weight.resize(p.NA*p.NZ, p.NA*p.NZ);
     MatrixXd this_ceil_weight = (1.-this_floor_weight.array());
-    a_mat = this_floor_weight.cwiseProduct(change_mat_floor) + change_mat_ceil.cwiseProduct( this_ceil_weight);  // not same size
+    a_mat = this_floor_weight.cwiseProduct(change_mat_floor) + this_ceil_weight.cwiseProduct(change_mat_ceil);  // not same size
     return a_mat;
 }
 
@@ -264,14 +260,16 @@ void bkm::get_agg_var_path(const RESULT r, PARAM p, BKM_RES &bkm_r, const BKM_PA
     for (size_t tidx= 0; tidx< bkm_p.TIME; ++tidx){
         for (size_t aidx= 0; aidx< p.NA; ++aidx){
             this_a_dist = 0;
+            // Summing up 
             for (size_t zidx= 0; zidx< p.NZ; ++zidx){
                 index = zidx*p.NA+aidx;
                 this_a_dist += bkm_r.new_dist_path(index, tidx);
             }
             bkm_r.new_ak_path(tidx, 0) += this_a_dist*p.a_grid[aidx];
         }
+        // To avoid infinite interest in transition
         if (bkm_r.new_ak_path(tidx, 0)==0.){
-            bkm_r.new_ak_path(tidx, 0) = .1;
+            bkm_r.new_ak_path(tidx, 0) = .01;
         }
         // can calculate when things converge
         bkm_r.agg_output_path(tidx, 0) = bkm_r.productivity(tidx)*pow(bkm_r.new_ak_path(tidx, 0), p.alpha);
@@ -297,13 +295,15 @@ void bkm::get_implied_price_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM 
 
 }
 
-void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp){
+void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp, BKM_RES br){
     	MatrixXd abs_diff = bkm_r.new_r_path - bkm_r.r_path;
 		bkm_r.path_err = std::max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
         bkm_r.dist_path = bkm_r.new_dist_path;
         double ratio = 0.9;
-        bkm_r.r_path = (1.-ratio)*bkm_r.new_r_path+ratio*bkm_r.r_path;
-        bkm_r.ak_path = bkm_r.new_ak_path;
+        bkm_r.ak_path = (1.-ratio)*bkm_r.new_ak_path+ratio*bkm_r.ak_path;
+        for (size_t tidx= 0; tidx< bp.TIME; ++tidx){
+            bkm_r.r_path(tidx) = p.alpha*br.productivity(tidx)/pow(bkm_r.ak_path(tidx, 0) , (1.-p.alpha)) - p.delta;
+        }
 }
 
 void bkm::write_all(BKM_RES br){
