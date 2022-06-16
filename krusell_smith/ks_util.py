@@ -251,17 +251,27 @@ def _pseudo_panel(net_time, NY, agg_shock, ind_shock,k_grid, ak_grid, k_decision
 
 def calc_dist(NA, NY, dist, ymarkov, k_grid, kdecision):
     # Young's method
-    floor_arr = np.floor((kdecision-k_grid[0])/(k_grid[1]-k_grid[0])).astype(np.int64)
-    ceil_arr = floor_arr + 1
-    ceil_arr[ceil_arr >= NA] = NA-1
-    weight_arr = (k_grid[ceil_arr] - kdecision)/(k_grid[1] - k_grid[0])
-    weight_arr[weight_arr < 0.] = 0.
-    weight_arr[weight_arr > 1.] = 1.
+    # pos of last element that is smaller than kdecision
+    # TODO: maybe wrong with corner cases, but shouldn't be a problem as steps are small anyway
+    ceil_arr = np.searchsorted(k_grid, kdecision, side='right')
+    floor_arr = ceil_arr - 1
+    ceil_arr[ceil_arr == NA] = NA -1  
+    floor_arr[floor_arr < 0] = 0
+    # weight put on floor !
+    weight_arr = (k_grid[ceil_arr] - kdecision)/(k_grid[ceil_arr] - k_grid[floor_arr])
+    weight_arr[floor_arr == NA - 1] = 1
+    print(weight_arr)
+    # print(ceil_arr)
+    # print(floor_arr)
+    # print(kdecision)
+    # print(k_grid[ceil_arr])
     new_dist = np.zeros((NA, NY)).astype(np.float32)
-    for ai in range(NA):
+    for ai in range(NA):  # next choice is ai
         rel_floor = floor_arr == ai
         rel_ceil = ceil_arr == ai
-        new_dist += np.matmul((dist*rel_floor.astype(np.float32)*weight_arr).reshape((NY, NA)).T, ymarkov)
-        new_dist += np.matmul((dist*rel_ceil.astype(np.float32)*(1-weight_arr)).reshape((NY, NA)).T, ymarkov)
+        floor_dist = np.matmul((dist*rel_floor.astype(np.float32)*weight_arr).reshape((NY, NA)).T, ymarkov)
+        ceil_dist = np.matmul((dist*rel_ceil.astype(np.float32)*(1-weight_arr)).reshape((NY, NA)).T, ymarkov)
+        new_dist[ai, :] += np.sum(floor_dist, axis=0)
+        new_dist[ai, :] += np.sum(ceil_dist, axis=0)
         # print("floor is non-zero: {}".format(np.sum(np.count_nonzero(rel_floor))))
     return new_dist.T.reshape(NA*NY)

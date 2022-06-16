@@ -42,17 +42,20 @@ agg_shocks[0] = Ass**rho*np.exp(eta_t[0])
 for tidx in range(1, T):
     agg_shocks[tidx] = agg_shocks[tidx-1]**rho*np.exp(eta_t[tidx])
 
+# Get BKM results
 dist_path_bkm = np.genfromtxt(dpath+"/"+"dist_path"+".txt")  # NA x T
 var_path_bkm = np.zeros((len(var_list), dist_path_bkm.shape[1]))
 for vi, var in enumerate(var_list):
     var_path_bkm[vi, :] = np.genfromtxt(dpath+"/"+var+"_path"+".txt")
 
 # steady states results
+# TODO: change to not BKM dependent
 Kss = 2.5**(1/(1-p.alpha))
 Css = var_path_bkm[3, -1]  # last period of BKM IRF
 ss_list = np.array([1, Kss, Kss**p.alpha-Css, Css, p.alpha*Kss**(p.alpha-1)+1. - p.delta, (1-p.alpha)*Kss**(p.alpha), Kss**p.alpha])
 log_ss = np.log(ss_list)
 
+# init KS simulation results arrays
 dist_path_ks = np.zeros((p.NK*p.NY, T))
 dist_path_ks[:, 0] = dist_path_bkm[:, 0]
 agg_k_ks = np.zeros(T)
@@ -62,13 +65,13 @@ agg_i_ks = np.zeros(T)
 # KS prediction using value function
 small_k = np.zeros((p.NK, p.NY, T))
 small_k_decision = p.k_grid[r.pfunc]
-# change to interp2d
+# TODO: change to interp2d
 interp_small_k = interpolate.RegularGridInterpolator((p.k_grid, p.ind_states, p.ak_grid, p.agg_states), small_k_decision, bounds_error=False, fill_value=None)
 
-for tidx in range(1, T):
+for tidx in range(1,T):
     tmp_coor =np.meshgrid(p.k_grid, p.ind_states, agg_k_ks[tidx - 1], agg_shocks[tidx - 1])
     tmp_coor = np.meshgrid(tmp_coor, indexing="ij")
-    coors =  np.reshape(tmp_coor, (4, -1), order="C").T  # dimension is 4
+    coors =  np.reshape(tmp_coor, (4, -1), order="C").T  # dimension is  (NA*NZ) x 4
     chosen_this_small_k = interp_small_k(coors).T
     chosen_this_small_k[chosen_this_small_k<0] = 0
     dist_path_ks[:, tidx] = calc_dist(p.NK, p.NY, dist_path_ks[:, tidx-1], p.ymarkov, p.k_grid, chosen_this_small_k)
@@ -80,8 +83,8 @@ agg_k_ks = agg_k_ks[drop:]
 agg_shocks_ks = agg_shocks[drop:]
 agg_y_ks = agg_shocks_ks*agg_k_ks**p.alpha
 agg_c_ks = agg_y_ks - agg_i_ks
-interest_ks = p.alpha*agg_i_ks**(p.alpha - 1)
-wage_ks = (1-p.alpha)*agg_k_ks**p.alpha
+interest_ks = 1+ p.alpha*agg_shocks_ks*agg_k_ks**(p.alpha - 1) - p.delta  # r
+wage_ks = (1-p.alpha)*agg_shocks_ks*agg_k_ks**p.alpha
 
 KS_list = np.zeros((len(var_list), T-drop))
 KS_list[:, :] = [agg_shocks_ks, agg_k_ks, agg_i_ks, agg_c_ks, interest_ks, wage_ks, agg_y_ks]
@@ -89,6 +92,7 @@ KS_logged =np.subtract(np.log(KS_list).T,  log_ss).T
 KS_var = np.var(KS_list, axis=1)
 KS_corr = np.corrcoef(KS_list)
 
+################################################################
 # BKM
 shock = .012
 bkm_agg_list = np.zeros((len(var_list), T))
@@ -106,6 +110,8 @@ for tidx in range(0, T):
         for i in range(len(var_list)):
             bkm_agg_list[i, tidx:] += bkm_normalized[i, :remain] * s
 
+################################################################
+# Draw Simulation Graph
 
 for idx, it in enumerate(var_list):
     fig = plt.figure(idx)
