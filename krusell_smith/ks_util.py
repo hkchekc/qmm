@@ -25,8 +25,8 @@ class param:
         self.NY = self.ind_states.size
         self.NK = 1000
         self.NAK = 25
-        self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)
         self.k_grid = np.exp(np.linspace(self.k_min, np.log(self.k_max-self.k_min+1.), self.NK)) - 1. + self.k_min
+        self.k_grid = np.linspace(self.k_min, self.k_max, self.NK)  # regular grid
         self.ak_grid = np.linspace(self.ak_min, self.ak_max, self.NAK)
         self.markov = np.genfromtxt("input/markov.txt")
         self.amarkov = np.genfromtxt("input/amarkov.txt")
@@ -260,7 +260,7 @@ def calc_dist(NA, NY, dist, ymarkov, k_grid, kdecision):
     # weight put on floor !
     weight_arr = (k_grid[ceil_arr] - kdecision)/(k_grid[ceil_arr] - k_grid[floor_arr])
     weight_arr[floor_arr == NA - 1] = 1
-    print(weight_arr)
+    # print(weight_arr)
     # print(ceil_arr)
     # print(floor_arr)
     # print(kdecision)

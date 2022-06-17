@@ -1,7 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import sys
+
+########################################
+# Obsolete, not anymore used
+########################################
 
 # usage: python3 plot.py directory_intended
 dir = ""
@@ -65,12 +68,12 @@ for idx, it in enumerate(arr_li):
     fig.canvas.set_window_title(it)
     tmp_log_this = np.log(f_dict[it])[:-drop]
     plt.plot(range(time)[:-drop], tmp_log_this-np.log(f_dict[it][-1]), color="orange", label="BKM")
-    try:
-        tmp_log_this = np.log(ks_dict[it])[:-drop]
-        plt.plot(range(time)[:-drop], tmp_log_this-np.log(ks_dict[it][-1]), color="blue", label="KS")
-        print(ks_dict[it][-1], it)
-    except KeyError:
-        print("{} not in KS".format(it))
+    # try:
+    #     tmp_log_this = np.log(ks_dict[it])[:-drop]
+    #     plt.plot(range(time)[:-drop], tmp_log_this-np.log(ks_dict[it][-1]), color="blue", label="KS")
+    #     print(ks_dict[it][-1], it)
+    # except KeyError:
+    #     print("{} not in KS".format(it))
     plt.legend()
     fname = '{}'.format(it)
     plt.suptitle(fname)

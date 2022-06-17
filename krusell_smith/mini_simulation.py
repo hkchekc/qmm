@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .ks_util import *
 
+########################################
+# Obsolete, not anymore used
+########################################
+
 # simulation and get variance
 T = 2000
 NZ = 2
@@ -68,7 +72,6 @@ p = param()
 r = res()
 init_shocks(p, r)
 get_prices(p, r)
-r.sim_ak = 
 for tidx in range(1, T):
     
     agg_k[tidx] = ks_forcast(agg_shocks[tidx - 1], agg_k[tidx - 1])
