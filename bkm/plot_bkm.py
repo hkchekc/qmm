@@ -34,31 +34,33 @@ for arr in arr_li:
 ngraph = len(arr_li) -1  # a grid is x axis
 
 drop = 1
-time = 120
+time =  len(f_dict[arr_li[0]])
 
 # KS IRF
-def ks_forcast(current_k, productivity):
-    slope =np.array([0.92039774, 0.94923057])
-    intercept = np.array([0.10849442, 0.06327283])
-    ks_states = np.array([.9832, 1.0157])
-    # interpolate
-    interp_slope = np.interp(productivity, ks_states, slope)
-    interp_intercept = np.interp(productivity, ks_states, intercept)
-    return np.exp(np.log(current_k) * interp_slope + interp_intercept)  # log normalized
-alpha = 0.36
-delta =.06
-agg_c = np.zeros(time)
-agg_i = np.zeros(time)
-agg_k = np.ones(time)
-agg_y = np.zeros(time)
-agg_shocks = f_dict["prod_path"]
-for tidx in range(1, time):
-    agg_k[tidx] = ks_forcast(agg_shocks[tidx - 1], agg_k[tidx - 1])
-    agg_i[tidx] = (agg_k[tidx] - agg_k[tidx - 1]) + delta * agg_k[tidx - 1]
-    agg_y[tidx] = agg_shocks[tidx]*(agg_k[tidx]**alpha)
-    agg_c[tidx] = agg_y[tidx] - agg_i[tidx]
+# def ks_forcast(current_k, productivity):
+#     slope =np.array([0.92039774, 0.94923057])
+#     intercept = np.array([0.10849442, 0.06327283])
+#     ks_states = np.array([.9832, 1.0157])
+#     # interpolate
+#     interp_slope = np.interp(productivity, ks_states, slope)
+#     interp_intercept = np.interp(productivity, ks_states, intercept)
+#     return np.exp(np.log(current_k) * interp_slope + interp_intercept)  # log normalized
+# alpha = 0.36
+# delta =.06
+# agg_c = np.zeros(time)
+# agg_i = np.zeros(time)
+# agg_k = np.ones(time)
+# agg_y = np.zeros(time)
+# agg_shocks = f_dict["prod_path"]
+# for tidx in range(1, time):
+#     agg_k[tidx] = ks_forcast(agg_shocks[tidx - 1], agg_k[tidx - 1])
+#     agg_i[tidx] = (agg_k[tidx] - agg_k[tidx - 1]) + delta * agg_k[tidx - 1]
+#     agg_y[tidx] = agg_shocks[tidx]*(agg_k[tidx]**alpha)
+#     agg_c[tidx] = agg_y[tidx] - agg_i[tidx]
 
-ks_dict = {"y_path":agg_y, "c_path":agg_c, "ak_path":agg_k, "i_path":agg_i}
+# ks_dict = {"y_path":agg_y, "c_path":agg_c, "ak_path":agg_k, "i_path":agg_i}
+print(f_dict['prod_path'])
+print(f_dict['ak_path'])
 
 
 for idx, it in enumerate(arr_li):
@@ -82,4 +84,4 @@ for idx, it in enumerate(arr_li):
     # plt.savefig('data_output/{}.png'.format(fname))
 
 
-plt.show()
+# plt.show()
