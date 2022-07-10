@@ -34,6 +34,6 @@ $(ODIR)/%.o: util/%.cpp $(INC)
 	$(CC)  $(CFLAGS) $(DEBUG_FLAGS) $< -o $@
 
 clean: 
-	# rm -f *.o $(ODIR)/*
+	rm -f *.o $(ODIR)/*
 	$(TARDIR)/$(SRCDIR)_main
 #	rm -f $(TARDIR)/*

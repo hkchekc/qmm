@@ -295,15 +295,14 @@ void bkm::get_implied_price_path(const PARAM p, BKM_RES &bkm_r, const BKM_PARAM 
 
 }
 
-void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp, BKM_RES br){
+void bkm::update_error(BKM_RES &bkm_r, PARAM p, BKM_PARAM bp){
     	MatrixXd abs_diff = bkm_r.new_r_path - bkm_r.r_path;
 		bkm_r.path_err = std::max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
         bkm_r.dist_path = bkm_r.new_dist_path;
-        double ratio = 0.9;
+        double ratio = 0.99*(bkm_r.path_err / (bkm_r.path_err+1e-3)); // TODO: relate this to abs_diff, if abs_diff is small, more weight on new  
         bkm_r.ak_path = (1.-ratio)*bkm_r.new_ak_path+ratio*bkm_r.ak_path;
-        for (size_t tidx= 0; tidx< bp.TIME; ++tidx){
-            bkm_r.r_path(tidx) = p.alpha*br.productivity(tidx)/pow(bkm_r.ak_path(tidx, 0) , (1.-p.alpha)) - p.delta;
-        }
+        bkm_r.r_path = .1*bkm_r.new_r_path+.9*bkm_r.r_path;
+
 }
 
 void bkm::write_all(BKM_RES br){
@@ -311,8 +310,7 @@ void bkm::write_all(BKM_RES br){
     std::string dir = "bkm";
 	std::string path =dir+"/data_output/";
 	std::string fname[len] = {"prod_path.txt", "c_path.txt", "ak_path.txt", "r_path.txt", "wage_path.txt", "i_path.txt", "dist_path.txt", "y_path.txt"};
-	MatrixXd *pmat[len] = {&br.productivity, &br.agg_c_path, &br.ak_path, &br.r_path, &br.wage_path, &br.agg_invest_path, &br.dist_path, &br.agg_output_path};
-	for (size_t i=0;i <len; ++i){
+    MatrixXd *pmat[len] = {&br.productivity, &br.agg_c_path, &br.new_ak_path, &br.new_r_path, &br.wage_path, &br.agg_invest_path, &br.dist_path, &br.agg_output_path};	for (size_t i=0;i <len; ++i){
         qmm_util::write_file(pmat[i], path+fname[i]) ; 
     }
     qmm_util::write_file(&br.implied_consum_arr, path+"implied_consum.txt"); 

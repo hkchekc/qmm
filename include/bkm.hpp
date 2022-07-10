@@ -12,7 +12,7 @@ using std::vector;
 struct BKM_PARAM{
     const unsigned seed = 1000;
     std::mt19937 rng;
-    const unsigned TIME= 120; // time for converging back to SS
+    const unsigned TIME= 300; // time for converging back to SS
     const unsigned long NH = 5000; // number of housholds in simulating 
     const double shock = 0.012; // consistent with KS.
     const double path_crit = 1e-4;  // crit for path convergence
