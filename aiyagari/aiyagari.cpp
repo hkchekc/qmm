@@ -60,8 +60,8 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 				if (this_wealth <p.a_grid[choice]) { // make sure consumption >0
 					break; // if this choice is over current state wealth, all later a' are over
 				}
-				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
 				consum = this_wealth- p.a_grid[choice];
+				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
                 // TODO: maybe problem with gamma
 				cu = 1/consum + 1; // more efficient by putting the negative sign only when calc tot util
 				// nu = p.markov.row(zidx).dot(r.vf.row(choice)); // next utility
@@ -79,7 +79,7 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 
 		}
 	}
-	abs_diff = r.new_vf - r.vf;
+	abs_diff = r.vf.cwiseAbs() - r.new_vf.cwiseAbs();
 	// abs_diff = abs_diff.cwiseAbs();
 	r.vf_err = max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
 	r.vf = r.new_vf;
@@ -95,10 +95,11 @@ void aiyagari::vfi(RESULT &r, PARAM p){
 	}
 	}
     while (r.vf_err > p.vf_crit){
-        aiyagari::egm(r, p);
-        // aiyagari::bellman(r, p);
+        // aiyagari::egm(r, p);
+        aiyagari::bellman(r, p);
     }
-	aiyagari::get_pfunc(r, p);
+	// Only for EGM
+	// aiyagari::get_pfunc(r, p);
 }
 
 void aiyagari::get_pfunc(RESULT &r, PARAM p){
@@ -144,15 +145,16 @@ void aiyagari::egm(RESULT &r, PARAM p){
 	// populate expected vprime
 	for (size_t nzidx=0; nzidx<p.NZ; ++nzidx){
 	for (size_t aidx=0; aidx<p.NA; ++aidx){
-		vfunc_new(aidx, nzidx) = p.interest/pow(r.consum_arr(aidx, nzidx), p.gamma);
+		vfunc_new(aidx, nzidx) = p.interest/pow(r.consum_arr(aidx, nzidx), p.gamma); // TODO: this is wrong
 		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+			// This somehow add up to one, idea wrong but result correct
 			r.expected_vprime(aidx, zidx) += p.markov(zidx, nzidx) *vfunc_new(aidx, nzidx) ;
 		}
 	}
 	}
 	MatrixXd abs_diff = vfunc_new - r.vf;
 	r.vf_err =  max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
-	r.vf = vfunc_new;
+	r.vf = vfunc_new;  // TODO: this is wrong idea
 }
 
 void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM p, size_t zi){
@@ -221,40 +223,39 @@ void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM
 }
 
 void aiyagari::find_stat_dist(RESULT &r, PARAM p){
-	double uniform  = 1/(double)p.NA/(double)p.NZ;
-
-	// Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
-	// Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
-	Eigen::MatrixXd stat_dist(p.NA*p.NZ, 1);
-	// stat_dist.fill(uniform);
+	//////////////////////////////////////////////////////////////////////////
+	// Standard Method
 	r.dist_err = 100;
+	float uniform  = 1/(double)p.NA/(double)p.NZ;
+	Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
+	Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
+	Eigen::MatrixXf stat_dist(p.NA*p.NZ, 1);
+	stat_dist.fill(uniform);
 	// atempts to imporve performance - if updating too much as once, will lead to instability
 	// use float instead of doubles to improve performance
-	// Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
-	// Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
-	// MatrixXd tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
-	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
-	// MatrixXd tmp_a_mat = Apow(2.);
-	// r.stat_dist = tmp_a_mat*r.stat_dist;
-	// for (size_t i=0; i<50; ++i){
-	// 	r.stat_dist = r.a_change_mat * r.stat_dist;
-	// }
-	// while (r.dist_err > p.dist_crit){
-	// 	new_stat_dist = tmp_tmp_a_mat * stat_dist;
-	// 	abs_diff = new_stat_dist - stat_dist;
-	// 	r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
-	// 	stat_dist = new_stat_dist;
-	// }
-	// r.stat_dist = stat_dist.cast <double> ();
-	// QR decompostion - in fact similar performance
+	Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
+	Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	Eigen::MatrixXf tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
+	while (r.dist_err > p.dist_crit){
+		new_stat_dist = tmp_tmp_a_mat * stat_dist;
+		abs_diff = new_stat_dist - stat_dist;
+		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
+		stat_dist = new_stat_dist;
+	}
+	r.stat_dist = stat_dist.cast <double> ();
+	//////////////////////////////////////////////////////////////////////////
+	// Method: QR decompostion - in fact similar performance
 	// A_MAT - EYE and then last row is all ones. (states+1, states) matrix. RHS is (states+1) 0-vector except last entry =1 
-	Eigen::MatrixXd A(p.NA*p.NZ+1, p.NA*p.NZ);
-	A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = r.a_change_mat - Eigen::MatrixXd::Identity(p.NA*p.NZ, p.NA*p.NZ);
-	A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXd::Ones(1, p.NA*p.NZ);
-	Eigen::MatrixXd b = Eigen::MatrixXd::Zero(p.NA*p.NZ+1, 1);
-	b(p.NA*p.NZ) = 1;
-	// then QR solve
-	stat_dist = A.householderQr().solve(b);
+	// Eigen::MatrixXd A(p.NA*p.NZ+1, p.NA*p.NZ);
+	// A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = r.a_change_mat - Eigen::MatrixXd::Identity(p.NA*p.NZ, p.NA*p.NZ);
+	// A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXd::Ones(1, p.NA*p.NZ);
+	// Eigen::MatrixXd b = Eigen::MatrixXd::Zero(p.NA*p.NZ+1, 1);
+	// b(p.NA*p.NZ) = 1;
+	// // then QR solve
+	// stat_dist = A.householderQr().solve(b);
+	// r.stat_dist = stat_dist;
+	////////////////////////////////////////////////////////////////////////
+	// Method: Sparse Matrix
 	// Eigen:: SparseMatrix<float> spA = A.sparseView();
 	// Eigen:: SparseMatrix<float> spb = b.sparseView(), sp_dist;
 	// Eigen::SparseQR<Eigen::SparseMatrix<float>, Eigen::COLAMDOrdering<int> > solver;
@@ -262,7 +263,7 @@ void aiyagari::find_stat_dist(RESULT &r, PARAM p){
 	// sp_dist = solver.solve(spb);
 	// stat_dist = Eigen::MatrixXf(sp_dist);
 
-	r.stat_dist = stat_dist;
+	// r.stat_dist = stat_dist;
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
@@ -283,7 +284,7 @@ void aiyagari::beta_error(RESULT &r, PARAM p){
 	if (abs(error) < 1. ){
 		ratio = abs(error);
 	}  else if (abs(error) < .1){
-		ratio = abs(error);
+		ratio = abs(error)/10;
 	}
 	if (error> 0.){
 		r.high_beta = r.high_beta- ratio*(r.high_beta-r.beta);
@@ -331,7 +332,8 @@ void aiyagari::solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_di
 		old_cumsum_x = cumsum_x;
 		cumsum_x += x_dist(xidx)*sorted_arr(xidx);
 		while (cum_x_dist>=.2){  
-			result_arr(qidx, which_x) = (old_cumsum_x+(.2-old_cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
+			// the second term is to take away 
+			result_arr(qidx, which_x) = (cumsum_x+(.2-cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
 			cum_x_dist -= .2;
 			cumsum_x = cum_x_dist*sorted_arr(xidx) ; // not sure if it is correct, is all the residual this index? 
 			qidx += 1;
@@ -339,10 +341,11 @@ void aiyagari::solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_di
 			old_cumsum_x = 0;
 			old_cum_x_dist = 0;
 		}
-		// TODO: This part may break things but on the other handcan capture some precision errors
-		// if (xidx == length-1){
-		// 	result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x];
-		// }
+
+	}
+		// TODO: This part can capture some precision errors when there is 
+	if (qidx==4){  
+		result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x]; 
 	}
 }
 
@@ -375,7 +378,19 @@ void aiyagari::get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd join
 			old_cum_x_dist = 0;
 		}
 	}
-	cout << unchanged_cumsum << " "<< sum_arr[which_x] << which_x << " match? \n";
+			// TODO: if precision not good, the last quantile will never show up
+	if (old_cumsum_x!=0){  
+		result_arr(qidx, which_x) = (old_cumsum_x+(quantile-old_cum_x_dist)*this_weighted_average)/sum_arr[which_x]; 
+		cum_x_dist -= quantile;
+		// maybe 1 - (quantile-old_cum_x_dist)/cum_x_dist?
+		cumsum_x = this_weighted_average; // * cum_x_dist, I don;t know why this is not needed for me it is wrong. TODO
+		qidx += 1;
+		// in case the while loop continues
+		old_cumsum_x = 0;
+		old_cum_x_dist = 0;
+	}
+	//unchanged should be 1, and which is only 0 or 1 here no 2 as 2 is the same as marginal
+	cout << unchanged_cumsum << " "<< sum_arr[which_x] << " " << which_x << " match? \n";
 }
 
 void aiyagari::calc_gini(RESULT &r, PARAM p){
@@ -494,10 +509,10 @@ void aiyagari::calc_gini(RESULT &r, PARAM p){
 
 
 void aiyagari::write_all (RESULT r, PARAM p,string dir){
-	const int len = 5;
+	const int len = 6;
 	string path =dir+"/data_output/";
-	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt"};
-	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr, &r.marginal_dist, &r.joint_dist, &r.gini_arr};
+	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt", "stat_dist.txt"};
+	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr, &r.marginal_dist, &r.joint_dist, &r.gini_arr, &r.stat_dist};
 	ofstream fs;
 	for (size_t i=0;i <len; ++i){
 		fs.open(path+fname[i]);
