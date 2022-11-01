@@ -15,15 +15,16 @@ int main() {
 	BKM_RES br;
 	PARAM p;
 	RESULT r;
+	bool young = false; // use young's method to obtain distribution 
 	init_all(r, p, br, bp);
-	init_path(p, br, bp);
+	init_path(p,r, br, bp);
 	cout << "done with init path \n";
     cout << "=============================== \n";
 	while (br.path_err > bp.path_crit){
 		egm(r, p, br, bp);
 		cout << "done with egm \n";
     	cout << "=============================== \n";
-        simulate_dist(r, p, br, bp);
+        simulate_dist(r, p, br, bp, young);
 		cout << "done with dist sim \n";
     	cout << "=============================== \n";
         get_agg_var_path(r, p, br, bp);

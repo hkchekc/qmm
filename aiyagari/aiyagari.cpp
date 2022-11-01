@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <Eigen/OrderingMethods>
 #include <cmath>
 #include <fstream>
 #include <gsl/gsl_spline.h>
@@ -42,29 +44,6 @@ void aiyagari::calc_moment(RESULT &r, PARAM p){
     r.this_wage = (1- p.alpha)*y/r.agg_lab;  // for next loop
 }
 
-void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM &p){
-	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
-	gsl_interp* interp_ptr;
-
-	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
-	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
-	for (size_t aidx=0; aidx<p.NA; ++aidx){
-    for (size_t zidx=0; zidx<p.NA; ++zidx){
-		r.consum_arr(aidx, zidx) = interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
-		r.exo_cash_on_hand(aidx, zidx), accel_ptr, &yval[0]); // super obscure
-		// try{
-		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
-		// }
-		// catch(...){
-		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
-		// }
-
-	}
-    }
-	gsl_interp_free( interp_ptr );
-	gsl_interp_accel_free( accel_ptr );
-}
-
 void aiyagari::bellman(RESULT &r, PARAM p){
 	double consum, util, cond_util, cu, nu, this_wealth, this_a;
 	MatrixXd abs_diff(p.NA, p.NZ);
@@ -81,8 +60,8 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 				if (this_wealth <p.a_grid[choice]) { // make sure consumption >0
 					break; // if this choice is over current state wealth, all later a' are over
 				}
-				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
 				consum = this_wealth- p.a_grid[choice];
+				// cu = pow(consum, 1.-p.gamma)/(1.-p.gamma);// current utility
                 // TODO: maybe problem with gamma
 				cu = 1/consum + 1; // more efficient by putting the negative sign only when calc tot util
 				// nu = p.markov.row(zidx).dot(r.vf.row(choice)); // next utility
@@ -100,7 +79,7 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 
 		}
 	}
-	abs_diff = r.new_vf - r.vf;
+	abs_diff = r.vf.cwiseAbs() - r.new_vf.cwiseAbs();
 	// abs_diff = abs_diff.cwiseAbs();
 	r.vf_err = max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
 	r.vf = r.new_vf;
@@ -108,33 +87,94 @@ void aiyagari::bellman(RESULT &r, PARAM p){
 
 void aiyagari::vfi(RESULT &r, PARAM p){
     r.vf_err = 100; 
-    // set init vf guess as and the corresponding vfprime guess as 
-    // for (size_t aidx=0; aidx<p.NA; ++aidx){
-    //     for (size_t zidx=0; zidx<p.NZ; ++zidx){
-    //         r.vf(aidx, zidx) = p.a_grid[aidx] + p.states[zidx];
-    //     }
-    // }
-
+	// initial guess of value function (implying expected vprime is also )
+	// r.vf = MatrixXd::Zero(p.NA, p.NZ);
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		r.expected_vprime(aidx, zidx) = pow(r.beta*(p.a_grid[aidx]), -p.gamma) ; // just guess more or less the correct shape
+	}
+	}
     while (r.vf_err > p.vf_crit){
-        // egm(r, p);
+        // aiyagari::egm(r, p);
         aiyagari::bellman(r, p);
     }
+	// Only for EGM
+	// aiyagari::get_pfunc(r, p);
+}
+
+void aiyagari::get_pfunc(RESULT &r, PARAM p){
+    double a_prime, this_constraint; // to find policy
+	int tmp_floor, tmp_ceil;
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+	this_constraint = r.implied_cash_on_hand(0, zidx);
+    for (size_t aidx=0; aidx<p.NA; ++aidx){
+        if (r.exo_cash_on_hand(aidx, zidx) < this_constraint){
+            r.consum_arr(aidx, zidx) = r.exo_cash_on_hand(aidx, zidx); 
+            r.pfunc(aidx, zidx) = (int)0;
+        } else{
+            a_prime = r.exo_cash_on_hand(aidx, zidx) - r.consum_arr(aidx, zidx); // by budget constraint
+            tmp_floor = std::floor((a_prime - p.a_min)/p.a_inc); // I think it must always be in grid
+            tmp_ceil = std::ceil((a_prime - p.a_min)/p.a_inc); 
+            if ( std::abs(a_prime-p.a_grid[tmp_floor])> std::abs(a_prime-p.a_grid[tmp_ceil]) ){
+                r.pfunc(aidx, zidx) = tmp_ceil;
+            }else{
+                r.pfunc(aidx, zidx) = tmp_floor;
+            }
+            // make sure no outside of range - it is ok, shouldn't matter for eq.
+            if ((unsigned) r.pfunc(aidx, zidx) >= p.NA){
+                r.pfunc(aidx, zidx) = p.NA - 1;
+            }
+        }
+    }
+	}
 }
 
 void aiyagari::egm(RESULT &r, PARAM p){
-    //TODO: Check only in range (no extrapolation)
-    for (size_t aidx=0; aidx<p.NA; ++aidx){
-        for (size_t zidx=0; zidx<p.NZ; ++zidx){
+		MatrixXd vfunc_new = MatrixXd::Zero(p.NA, p.NZ);// to be populated in loop
+
+    for (size_t zidx=0; zidx<p.NZ; ++zidx){
+		for (size_t aidx=0; aidx<p.NA; ++aidx){
             r.implied_consum_arr(aidx, zidx) = pow(r.beta*r.expected_vprime(aidx, zidx), -1/p.gamma);
             r.implied_cash_on_hand(aidx, zidx) = r.implied_consum_arr(aidx, zidx) + p.a_grid[aidx];
-            r.exo_cash_on_hand(aidx, zidx) = p.states[zidx] + p.interest*p.a_grid[aidx];  //TODO: remember to add the wage later
-            // get exogenous 
-            //TODO: change the index of first arguement
-            aiyagari::interp_linear(r.implied_cash_on_hand.block(0, 0, p.NA, 1).array(), r.implied_consum_arr.array(), r, p);
-            // get value from last 
+            r.exo_cash_on_hand(aidx, zidx) = r.this_wage*p.states[zidx] + p.interest*p.a_grid[aidx]; 
         }
+		aiyagari::interp_linear(r.implied_cash_on_hand.block(0, zidx, p.NA, 1).array(), 
+				r.implied_consum_arr.block(0, zidx, p.NA, 1).array(), r, p, zidx);
     }
+	r.expected_vprime = MatrixXd::Zero(p.NA, p.NZ);
+	// populate expected vprime
+	for (size_t nzidx=0; nzidx<p.NZ; ++nzidx){
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		vfunc_new(aidx, nzidx) = p.interest/pow(r.consum_arr(aidx, nzidx), p.gamma); // TODO: this is wrong
+		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+			// This somehow add up to one, idea wrong but result correct
+			r.expected_vprime(aidx, zidx) += p.markov(zidx, nzidx) *vfunc_new(aidx, nzidx) ;
+		}
+	}
+	}
+	MatrixXd abs_diff = vfunc_new - r.vf;
+	r.vf_err =  max(abs_diff.maxCoeff(), abs(abs_diff.minCoeff()));
+	r.vf = vfunc_new;  // TODO: this is wrong idea
+}
 
+void aiyagari::interp_linear(Eigen::ArrayXd xval, Eigen::ArrayXd yval, RESULT &r, PARAM p, size_t zi){
+	gsl_interp_accel* accel_ptr = gsl_interp_accel_alloc();
+	gsl_interp* interp_ptr;
+
+	interp_ptr = gsl_interp_alloc(gsl_interp_linear, xval.size() ); // gsl_interp_cspline for cubic, gsl_interp_linear for lienar
+	gsl_interp_init( interp_ptr, &xval[0], &yval[0], xval.size() );
+	for (size_t aidx=0; aidx<p.NA; ++aidx){
+		interp_ptr->type->eval( interp_ptr->state,&xval[0], &yval[0] , interp_ptr->size,
+		r.exo_cash_on_hand(aidx, zi), accel_ptr, &r.consum_arr(aidx, zi)); // super obscure
+		// try{
+		// r.exo_pension_consum_arr(aidx, time_now) = 	gsl_interp_eval( interp_ptr,&xval[0], &yval[0], p.exo_pension_cash_on_hand(aidx) , accel_ptr);
+		// }
+		// catch(...){
+		// 	extrapolation(RESULT &r, Eigen::ArrayXd xval,Eigen::ArrayXd yval, int aidx, double tmr_a)
+		// }
+    }
+	gsl_interp_free( interp_ptr );
+	gsl_interp_accel_free( accel_ptr );
 }
 
 void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
@@ -142,74 +182,121 @@ void aiyagari::populat_a_change_mat(RESULT &r, const PARAM p){
 }
 
 void aiyagari::get_a_change_mat(MatrixXd &a_mat, const MatrixXi pol, const PARAM p){
-	int choice, current_state, next_state;
-	a_mat = MatrixXd::Zero(p.NA*p.NZ, p.NA*p.NZ);
-	for (size_t aidx=0; aidx<p.NA; ++aidx){
-		for (size_t zidx=0; zidx<p.NZ; ++zidx){
-			current_state = zidx*p.NA+aidx;
-			choice = pol(aidx, zidx);
-			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
-				next_state = nzidx*p.NA + choice;
-				a_mat(next_state, current_state) += p.markov(zidx, nzidx); 
-			}
+// 	// this matrix is transposed.
+// 	int choice, current_state, next_state;
+// 	Eigen::MatrixXf tmp_a_mat = Eigen::MatrixXf::Zero(p.NA*p.NZ, p.NA*p.NZ);
+// 	for (size_t aidx=0; aidx<p.NA; ++aidx){
+// 		for (size_t zidx=0; zidx<p.NZ; ++zidx){
+// 			current_state = zidx*p.NA+aidx;
+// 			choice = pol(aidx, zidx);
+// 			for (size_t nzidx=0; nzidx< p.NZ; ++nzidx){
+// 				next_state = nzidx*p.NA + choice;
+// 				tmp_a_mat(next_state, current_state) += p.markov(zidx, nzidx); 
+// 			}
+// 		}
+// 	}
+
+// // not sure but I think the eigenvector should be the same with or without normalizing
+//   	float sum_row;
+//   	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
+//   		sum_row = tmp_a_mat.col(i).sum();
+//   		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
+//   		 	tmp_a_mat(j,i) /= sum_row;
+//   		}
+//   	}
+
+	// new method
+	Eigen::MatrixXf tmp_a_mat(p.NA*p.NZ, p.NA*p.NZ);
+	Eigen::MatrixXi this_pol_arr;
+	Eigen::MatrixXf tmp_small_trans_mat;
+	for (size_t zidx=0; zidx<p.NZ; ++zidx){
+		this_pol_arr = pol.col(zidx);
+		tmp_small_trans_mat = Eigen::MatrixXf::Zero(p.NA, p.NA);
+		for (size_t aidx=0; aidx < p.NA; ++aidx){
+			tmp_small_trans_mat(this_pol_arr(aidx), aidx) = 1.;
+		}
+		for (size_t nzidx=0; nzidx<p.NZ; ++nzidx){
+			tmp_a_mat.block(nzidx*p.NA, zidx*p.NA, p.NA, p.NA) = p.markov(nzidx, zidx)*tmp_small_trans_mat;
 		}
 	}
-// not sure but I think the eigenvector should be the same with or without normalizing
-  	float sum_row;
-  	for (size_t i = 0; i < p.NA*p.NZ; ++i) {
-  		sum_row = a_mat.col(i).sum();
-  		for (size_t j = 0; j < p.NA*p.NZ; ++j) {
-  		 	a_mat(j,i) /= sum_row;
-  		}
-  	}
- 
+	a_mat = tmp_a_mat.cast<double>();
 }
 
 void aiyagari::find_stat_dist(RESULT &r, PARAM p){
-	double uniform  = 1/(double)p.NA/(double)p.NZ;
-
-	MatrixXd abs_diff(p.NA*p.NZ, 1);
-	MatrixXd new_stat_dist(p.NA*p.NZ,1);
-	r.stat_dist.fill(uniform);
+	//////////////////////////////////////////////////////////////////////////
+	// Standard Method
 	r.dist_err = 100;
+	float uniform  = 1/(double)p.NA/(double)p.NZ;
+	Eigen::MatrixXf abs_diff(p.NA*p.NZ, 1);
+	Eigen::MatrixXf new_stat_dist(p.NA*p.NZ,1);
+	Eigen::MatrixXf stat_dist(p.NA*p.NZ, 1);
+	stat_dist.fill(uniform);
 	// atempts to imporve performance - if updating too much as once, will lead to instability
-	MatrixXd tmp_a_mat = r.a_change_mat*r.a_change_mat*r.a_change_mat;
-	MatrixXd tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
-	// Eigen::MatrixPower<MatrixXd> Apow(r.a_change_mat);
-	// MatrixXd tmp_a_mat = Apow(2.);
-	// r.stat_dist = tmp_a_mat*r.stat_dist;
-	// for (size_t i=0; i<50; ++i){
-	// 	r.stat_dist = r.a_change_mat * r.stat_dist;
-	// }
-	// unsigned i = 0;
+	// use float instead of doubles to improve performance
+	Eigen::MatrixXf tmp_a_mat = r.a_change_mat.cast <float> ();
+	Eigen::MatrixXf tmp_tmp_a_mat = tmp_a_mat*tmp_a_mat;
+	Eigen::MatrixXf tmp_tmp_tmp_a_mat = tmp_tmp_a_mat*tmp_tmp_a_mat;
 	while (r.dist_err > p.dist_crit){
-		new_stat_dist = tmp_tmp_a_mat * r.stat_dist;
-		abs_diff = new_stat_dist - r.stat_dist;
+		new_stat_dist = tmp_tmp_a_mat * stat_dist;
+		abs_diff = new_stat_dist - stat_dist;
 		r.dist_err = max(abs_diff.maxCoeff(),abs( abs_diff.minCoeff()));
-		r.stat_dist = new_stat_dist;
-		// i += 1;
+		stat_dist = new_stat_dist;
 	}
-	// cout << i << "count for stat dist \n";
+	r.stat_dist = stat_dist.cast <double> ();
+	//////////////////////////////////////////////////////////////////////////
+	// Method: QR decompostion - in fact similar performance
+	// A_MAT - EYE and then last row is all ones. (states+1, states) matrix. RHS is (states+1) 0-vector except last entry =1 
+	// Eigen::MatrixXd A(p.NA*p.NZ+1, p.NA*p.NZ);
+	// A.block(0, 0, p.NA*p.NZ, p.NA*p.NZ) = r.a_change_mat - Eigen::MatrixXd::Identity(p.NA*p.NZ, p.NA*p.NZ);
+	// A.block(p.NA*p.NZ, 0, 1, p.NA*p.NZ) = Eigen::MatrixXd::Ones(1, p.NA*p.NZ);
+	// Eigen::MatrixXd b = Eigen::MatrixXd::Zero(p.NA*p.NZ+1, 1);
+	// b(p.NA*p.NZ) = 1;
+	// // then QR solve
+	// stat_dist = A.householderQr().solve(b);
+	// r.stat_dist = stat_dist;
+	////////////////////////////////////////////////////////////////////////
+	// Method: Sparse Matrix
+	// Eigen:: SparseMatrix<float> spA = A.sparseView();
+	// Eigen:: SparseMatrix<float> spb = b.sparseView(), sp_dist;
+	// Eigen::SparseQR<Eigen::SparseMatrix<float>, Eigen::COLAMDOrdering<int> > solver;
+	// solver.compute(spA);
+	// sp_dist = solver.solve(spb);
+	// stat_dist = Eigen::MatrixXf(sp_dist);
+
+	// r.stat_dist = stat_dist;
 }
 
 void aiyagari::beta_error(RESULT &r, PARAM p){
 	r.agg_cap = 0;
-
+	double ratio = 1.;
 	for (size_t aidx=0; aidx < p.NA; ++aidx){
 		for (size_t zidx=0; zidx< p.NZ; ++zidx){
 			r.agg_cap += p.a_grid[r.pfunc(aidx, zidx)]* r.stat_dist(zidx*p.NA+aidx);
 		}
 	}
+	//catch error if initial guess is bad
+	if (r.agg_cap < 1e-4){
+		r.agg_cap = 0.01;
+	}
     aiyagari::calc_moment(r, p);
     //TODO: check the direction
-	if (r.implied_interest - p.interest < 0.){
-		r.high_beta = r.beta; 
-	}else {
-		r.low_beta = r.beta;
+	double error = r.agg_cap - p.targeted_ak;
+	if (abs(error) < 1. ){
+		ratio = abs(error);
+	}  else if (abs(error) < .1){
+		ratio = abs(error)/10;
 	}
-	r.beta_err = abs(r.implied_interest - p.interest);
-	double ratio = 0.5;
-	r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
+	if (error> 0.){
+		r.high_beta = r.high_beta- ratio*(r.high_beta-r.beta);
+		r.beta = (r.high_beta+r.low_beta)/2.;
+	}else {
+		r.low_beta = r.low_beta+ ratio*(r.beta-r.low_beta); 
+		r.beta = (r.high_beta+r.low_beta)/2.;
+
+	}
+	r.beta_err = abs(error);
+	// r.beta_err = abs(r.agg_cap - p.targeted_ak);
+	// r.beta = (1-ratio)*(r.high_beta+r.low_beta)/2 +ratio*r.beta ;
 	cout << r.implied_interest << "interest" << "\n";
 }
 
@@ -245,7 +332,8 @@ void aiyagari::solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_di
 		old_cumsum_x = cumsum_x;
 		cumsum_x += x_dist(xidx)*sorted_arr(xidx);
 		while (cum_x_dist>=.2){  
-			result_arr(qidx, which_x) = (old_cumsum_x+(.2-old_cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
+			// the second term is to take away 
+			result_arr(qidx, which_x) = (cumsum_x+(.2-cum_x_dist)*sorted_arr(xidx))/sum_arr[which_x]; 
 			cum_x_dist -= .2;
 			cumsum_x = cum_x_dist*sorted_arr(xidx) ; // not sure if it is correct, is all the residual this index? 
 			qidx += 1;
@@ -253,10 +341,11 @@ void aiyagari::solve_quantile(MatrixXd &result_arr, size_t length, MatrixXd x_di
 			old_cumsum_x = 0;
 			old_cum_x_dist = 0;
 		}
-		// TODO: This part may break things but on the other handcan capture some precision errors
-		// if (xidx == length-1){
-		// 	result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x];
-		// }
+
+	}
+		// TODO: This part can capture some precision errors when there is 
+	if (qidx==4){  
+		result_arr(qidx, which_x) = cumsum_x/sum_arr[which_x]; 
 	}
 }
 
@@ -289,7 +378,19 @@ void aiyagari::get_joint_dist(MatrixXd &result_arr, size_t length, MatrixXd join
 			old_cum_x_dist = 0;
 		}
 	}
-	cout << unchanged_cumsum << " "<< sum_arr[which_x] << which_x << " match? \n";
+			// TODO: if precision not good, the last quantile will never show up
+	if (old_cumsum_x!=0){  
+		result_arr(qidx, which_x) = (old_cumsum_x+(quantile-old_cum_x_dist)*this_weighted_average)/sum_arr[which_x]; 
+		cum_x_dist -= quantile;
+		// maybe 1 - (quantile-old_cum_x_dist)/cum_x_dist?
+		cumsum_x = this_weighted_average; // * cum_x_dist, I don;t know why this is not needed for me it is wrong. TODO
+		qidx += 1;
+		// in case the while loop continues
+		old_cumsum_x = 0;
+		old_cum_x_dist = 0;
+	}
+	//unchanged should be 1, and which is only 0 or 1 here no 2 as 2 is the same as marginal
+	cout << unchanged_cumsum << " "<< sum_arr[which_x] << " " << which_x << " match? \n";
 }
 
 void aiyagari::calc_gini(RESULT &r, PARAM p){
@@ -408,10 +509,10 @@ void aiyagari::calc_gini(RESULT &r, PARAM p){
 
 
 void aiyagari::write_all (RESULT r, PARAM p,string dir){
-	const int len = 5;
+	const int len = 6;
 	string path =dir+"/data_output/";
-	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt"};
-	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr, &r.marginal_dist, &r.joint_dist, &r.gini_arr};
+	string fname[len] = {"vf.txt", "consum.txt", "marginal_dist.txt", "joint_dist.txt", "gini_arr.txt", "stat_dist.txt"};
+	MatrixXd *pmat[len] = {&r.vf, &r.consum_arr, &r.marginal_dist, &r.joint_dist, &r.gini_arr, &r.stat_dist};
 	ofstream fs;
 	for (size_t i=0;i <len; ++i){
 		fs.open(path+fname[i]);
@@ -433,3 +534,14 @@ void aiyagari::write_all (RESULT r, PARAM p,string dir){
 	}
 	fs.close();
 }
+
+// void aiyagari::write_result(RESULT r, std::string fname){
+// 	void* buffer = malloc(sizeof (r));
+// 	int fd = open(fname, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR);
+// 	if (fd < 0) {
+// 		printf("Error opening file\n");
+// 		return 1;
+// 	}
+// 	memcpy(buffer, &r, sizeof (r));
+// 	write(fd2, buffer, sizeof (r));
+// }
